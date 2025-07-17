@@ -1,5 +1,5 @@
-# kafka-python-server
-kafka 연결을 위한 python 보일러 플레이트 저장소 입니다.
+# product-details-server
+상품의 상세정보를 생성하기 위한 파이썬 마이크로 서버입니다.
 
 # Initialize Setting
 - Python 버전: v3.10.12
