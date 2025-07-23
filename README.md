@@ -27,7 +27,7 @@ bash ./scripts/docker-run.sh <DOCKER HUB ID> <SERVICE NAME> <SERVICE PORT: 옵�
 - `SERVICE PORT` 는 외부에서 접근 가능한 포트입니다.
 
 ```
-uvicorn src.app:app --host 0.0.0.0 --port 5001 --reload
+uvicorn src.main:app --host 0.0.0.0 --port 5001 --reload
 ```
 - 위 명령어 사용시 개발환경에서 동작합니다.
 - http://localhost:5001/docs 혹은 /redoc 으로 접근하시면 api 문서를 확인 할 수 있습니다.
