@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from confluent_kafka import Producer, Consumer, KafkaException
 
 from src.core.config import KAFKA_BROKER, TOPIC_NAME, MODE
@@ -77,6 +78,19 @@ app = FastAPI(
     lifespan=lifespan,
     title="Confluent Kafka FastAPI Example (Refactored)",
     description="A refactored FastAPI application with separated concerns."
+)
+
+# --- CORS 미들웨어 추가 ---
+origins = [
+    "http://localhost:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- 라우터 포함 ---
