@@ -7,6 +7,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
+from src.services.create_image import create_image, reshape_image, download_image
+
 # API 키 로드
 load_dotenv()
 
@@ -73,7 +75,10 @@ class ProductPage(BaseModel):
 # 2. LangChain 및 모델 설정
 # -------------------------------------------------------------
 
-def generate_product_page_concept(product_info: str) -> ProductPage:
+def generate_product_page_concept(product_info: str, product_image_url: str) -> ProductPage:
+    # 이미지 저장 및 유효성 검사
+    download_image(product_image_url)
+    
     """
     상품 정보를 분석하여, HTML 생성을 위한 페이지 '설계도'를 생성합니다.
     (공통 스타일 컨셉 + 각 블럭별 통합 코딩 지시서)
@@ -186,7 +191,7 @@ def create_html_block(block: any, style: StyleConcept) -> str:
     3.  **최종 출력:** 위 모든 요소를 종합하여, 당신의 창의적인 생각을 html 코드로 즉시 변환하세요.
 
     **주의**
-    최종 출력은 반드시 html 코드만을 반환해야 합니다.
+    최종 출력은 반드시 html 언어로 된 코드만을 반환해야 합니다.
     """
 
     human_prompt_template = """
@@ -207,10 +212,10 @@ def create_html_block(block: any, style: StyleConcept) -> str:
     # 강화된 프롬프트로 새로운 블럭 객체를 만들어 반환
     return markdown_to_html(html)
 
-def product_to_html(product_info: str) -> List[str]:
+def product_to_html(product_info: str, product_image_url: str) -> List[str]:
     """상품 정보를 받아 html 형식의 html 코드를 반환합니다."""
     print("request product_to_html...")
-    page_layout = generate_product_page_concept(product_info)
+    page_layout = generate_product_page_concept(product_info, product_image_url)
     html_results = get_concept_html_template(page_layout)
     return html_results
     
