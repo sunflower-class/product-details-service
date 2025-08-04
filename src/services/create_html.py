@@ -1,11 +1,13 @@
 import os
 from dotenv import load_dotenv
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
+from bs4 import BeautifulSoup
+import re
 
 from src.services.create_image import create_image, reshape_image, download_image
 
@@ -77,7 +79,7 @@ class ProductPage(BaseModel):
 
 def generate_product_page_concept(product_info: str, product_image_url: str) -> ProductPage:
     # 이미지 저장 및 유효성 검사
-    download_image(product_image_url)
+    download_image(product_image_url, ext=None)
     
     """
     상품 정보를 분석하여, HTML 생성을 위한 페이지 '설계도'를 생성합니다.
@@ -212,10 +214,71 @@ def create_html_block(block: any, style: StyleConcept) -> str:
     # 강화된 프롬프트로 새로운 블럭 객체를 만들어 반환
     return markdown_to_html(html)
 
+# -------------------------------------------------------------
+# 5. 이미지 생성하기
+# -------------------------------------------------------------
+
+def _get_image_url_from_prompt(prompt: str, reference_url: Optional[str]) -> str:
+    """
+    프롬프트를 받아 적절한 API를 호출하고 결과 URL을 반환하는 헬퍼 함수.
+    로직 중복을 방지합니다.
+    """
+    if prompt.startswith("product:") and reference_url:
+        # "product:" 접두사를 제거하고 reshape_image 호출
+        response = reshape_image(prompt[8:].strip(), reference_url)
+    else:
+        # 그 외의 경우 create_image 호출
+        response = create_image(prompt)
+    
+    return response.data[0].url
+
+
+def _generate_images_in_html(html_string: str, product_image_url: Optional[str]) -> str:
+    """단일 HTML 문자열 내의 모든 이미지 프롬프트를 실제 이미지 URL로 변환합니다."""
+    
+    # 1. CSS의 background-image: url(...) 처리
+    def process_css_url(match):
+        prompt = match.group(1)
+        new_url = _get_image_url_from_prompt(prompt, product_image_url)
+        return f"url('{new_url}')"
+
+    # 참고: 제공된 데이터의 url()이 작은따옴표를 사용하므로 패턴을 수정했습니다.
+    html_after_css = re.sub(r"url\('([^']*)'\)", process_css_url, html_string)
+
+    # 2. <img> 태그의 src 속성 처리
+    soup = BeautifulSoup(html_after_css, 'lxml')
+    all_images = soup.find_all('img')
+
+    for tag in all_images:
+        if tag.get('src'):
+            prompt = tag['src']
+            tag['src'] = _get_image_url_from_prompt(prompt, product_image_url)
+            
+    return str(soup)
+
+
+def process_html_documents(
+    html_list: List[str], 
+    product_image_url: Optional[str] = None
+) -> List[str]:
+    """
+    HTML 문자열 리스트를 받아 각각을 처리하고,
+    처리된 HTML 문자열 리스트를 반환하는 메인 함수.
+    """
+    processed_html_list = []
+    for html_doc in html_list:
+        processed_doc = _generate_images_in_html(html_doc, product_image_url)
+        processed_doc = processed_doc.replace('\n', '')
+        processed_doc = processed_doc.replace("\'", '"')
+        processed_html_list.append(processed_doc)
+        
+    return processed_html_list
+
 def product_to_html(product_info: str, product_image_url: str) -> List[str]:
     """상품 정보를 받아 html 형식의 html 코드를 반환합니다."""
     print("request product_to_html...")
     page_layout = generate_product_page_concept(product_info, product_image_url)
     html_results = get_concept_html_template(page_layout)
+    html_results = process_html_documents(html_results, product_image_url)
     return html_results
     

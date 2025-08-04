@@ -14,6 +14,7 @@ from together import Together
 
 # size: small(256*256), default(512*512), large(1024*1024)
 def create_image(prompt: str, size: str = "default") -> any:
+    print("create_image...")
     client = Together(
         api_key=TOGETHER_API_KEY,
     )
@@ -45,6 +46,7 @@ def create_image(prompt: str, size: str = "default") -> any:
 
 # size: small(256*256), default(512*512), large(1024*1024)
 def reshape_image(prompt: str, image_url: str, size: str = "default") -> any:
+    print("reshape_image...")
     client = Together(
         api_key=TOGETHER_API_KEY,
     )
@@ -75,10 +77,16 @@ def reshape_image(prompt: str, image_url: str, size: str = "default") -> any:
 import requests
 
 # 확장자 제외한 이름 사용
-def download_image(url: str, filename: str | None = None, path="./_data/images") -> any:
+def download_image(
+        url: str, 
+        filename: str | None = None, 
+        path="./src/_data/images", 
+        ext: str | None = 'jpg',
+    ) -> any:
     last_part = url.split('/')[-1]
     filename = filename if filename != None else last_part
-    filepath = f'{path}/{filename}.jpg'
+    extension = f'.{ext}' if ext != None else ''
+    filepath = f'{path}/{filename}{extension}'
 
     try:
         response = requests.get(url)

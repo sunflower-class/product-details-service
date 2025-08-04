@@ -34,6 +34,7 @@ async def health_check(request: Request):
 
 class ProductInfo(BaseModel):
     product_data: str
+    product_image_url: str
 
 class HtmlElementsResponse(BaseModel):
     html_list: List[str]
@@ -47,6 +48,6 @@ class ApiResponse(BaseModel):
              tags=["Products"])
 async def generate_html_codes(info: ProductInfo, request: Request):
     """상품 정보를 받아 html 코드를 생성하여 반환하는 엔드포인트"""
-    html_list = product_to_html(info.product_data.strip())
+    html_list = product_to_html(info.product_data.strip(), info.product_image_url.strip())
     producer = request.app.state.producer
     return handle_kafka_production(producer, { "html_list": html_list })
