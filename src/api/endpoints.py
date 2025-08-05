@@ -5,10 +5,12 @@ from pydantic import BaseModel
 
 from src.services.kafka_service import handle_kafka_production
 from src.services.create_html import product_to_html
+from src.services.create_image import create_image, reshape_image, download_image
+
 from src.core.config import MODE
 
 # APIRouter 인스턴스 생성
-router = APIRouter(prefix="/product")
+router = APIRouter(prefix="/generation")
 
 @router.get('/')
 def running_test():
@@ -51,3 +53,25 @@ async def generate_html_codes(info: ProductInfo, request: Request):
     html_list = product_to_html(info.product_data.strip(), info.product_image_url.strip())
     producer = request.app.state.producer
     return handle_kafka_production(producer, { "html_list": html_list })
+
+class ImageInfo(BaseModel):
+    prompt_data: str
+    image_url: str
+
+class ImageResponse(BaseModel):
+    image_url: str
+
+class ImageApiResponse(BaseModel):
+    status: str
+    data: ImageResponse    
+
+@router.post("/image", 
+             response_model=ImageApiResponse,
+             tags=["Images"])
+async def generate_image(info: ImageInfo, request: Request):
+    """이미지 주소를 받아 프롬프트대로 수정하여 새로운 이미지 주소를 반환하는 엔드포인트"""
+    res = reshape_image(info.prompt_data.strip(), info.image_url.strip())
+
+    producer = request.app.state.producer
+    return handle_kafka_production(producer, { "image_url": res.data[0].url })
+
