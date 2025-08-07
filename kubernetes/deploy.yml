@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: python
+  name: product-details-service
   labels:
-    app: python
+    app: product-details-service
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: python
+      app: product-details-service
   template:
     metadata:
       labels:
-        app: python
+        app: product-details-service
     spec:
       containers:
-        - name: python
-          image: chldlsrb1000/python-service:latest # Docker Hub 사용자명과 서비스이름을 입력해주세요.
+        - name: product-details-service
+          image: lmo2914/product-details-service:latest # Docker Hub 사용자명과 서비스이름을 입력해주세요.
           env:
             - name: MODE
               value: "kubernetes" 
@@ -44,12 +44,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: python-svc
+  name: product-details-service-svc
   labels:
-    app: python
+    app: product-details-service
 spec:
   ports:
     - port: 5001
       targetPort: 5001
   selector:
-    app: python
+    app: product-details-service
