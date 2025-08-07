@@ -10,7 +10,7 @@ from src.services.create_image import create_image, reshape_image, download_imag
 from src.core.config import MODE
 
 # APIRouter 인스턴스 생성
-router = APIRouter(prefix="/generation")
+router = APIRouter(prefix="/api/generation")
 
 @router.get('/')
 def running_test():
