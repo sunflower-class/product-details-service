@@ -41,10 +41,10 @@ spec:
               key: together-api-key
         resources:
           requests:
-            memory: "800Mi"
+            memory: "350Mi"
             cpu: "200m"
           limits:
-            memory: "1.5Gi"
+            memory: "700Mi"
             cpu: "800m"
         livenessProbe:
           httpGet:
