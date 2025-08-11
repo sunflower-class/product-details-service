@@ -2,10 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: product-details-service
+  namespace: sangsangplus-backend
   labels:
     app: product-details-service
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: product-details-service
@@ -15,41 +17,73 @@ spec:
         app: product-details-service
     spec:
       containers:
-        - name: product-details-service
-          image: lmo2914/product-details-service:latest # Docker Hub 사용자명과 서비스이름을 입력해주세요.
-          env:
-            - name: MODE
-              value: "kubernetes" 
-          ports:
-            - containerPort: 5001
-          readinessProbe:
-            httpGet:
-              path: '/actuator/health'
-              port: 5001
-            initialDelaySeconds: 10
-            timeoutSeconds: 2
-            periodSeconds: 5
-            failureThreshold: 10
-          livenessProbe:
-            httpGet:
-              path: '/actuator/health'
-              port: 5001
-            initialDelaySeconds: 120
-            timeoutSeconds: 2
-            periodSeconds: 5
-            failureThreshold: 5
+      - name: product-details-service
+        image: buildingbite/sangsangplus-product-details:optimized-v2
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5001
+        env:
+        - name: MODE
+          value: "development"  # Kafka 없이 실행
+        # - name: KAFKA_BROKER
+        #   value: "kafka-service.default.svc.cluster.local:9092"
+        - name: TOPIC_NAME
+          value: "product-details-events"
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: openai-api-key
+        - name: TOGETHER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: together-api-key
+        resources:
+          requests:
+            memory: "800Mi"
+            cpu: "200m"
+          limits:
+            memory: "1.5Gi"
+            cpu: "800m"
+        livenessProbe:
+          httpGet:
+            path: /api/generation/actuator/health
+            port: 5001
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/generation/actuator/health
+            port: 5001
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          periodSeconds: 5
+          failureThreshold: 5
+# volumeMounts:
+        # - name: chroma-data
+        #   mountPath: /app/src/_data
+      # volumes:
+      # - name: chroma-data
+      #   emptyDir: {}
 
 ---
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-details-service-svc
+  name: product-details-service
+  namespace: sangsangplus-backend
   labels:
     app: product-details-service
 spec:
+  type: ClusterIP
   ports:
-    - port: 5001
-      targetPort: 5001
+  - port: 80
+    targetPort: 5001
+    protocol: TCP
+    name: http
   selector:
     app: product-details-service

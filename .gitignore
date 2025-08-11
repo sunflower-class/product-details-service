@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Kubernetes secrets (exclude from Git but keep for CI/CD reference)
+# kubernetes/secret.yaml
+# kubernetes/secret.yml
+# **/secret*.yaml
+# **/secret*.yml
