@@ -41,11 +41,11 @@ spec:
               key: together-api-key
         resources:
           requests:
-            memory: "350Mi"
-            cpu: "200m"
+            memory: "280Mi"
+            cpu: "210m"
           limits:
-            memory: "700Mi"
-            cpu: "800m"
+            memory: "350Mi"
+            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /api/generation/actuator/health
