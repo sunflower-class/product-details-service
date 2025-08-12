@@ -105,5 +105,6 @@ kubectl rollout restart deployment/gateway  # 재반영
 | `/api/generation/actuator/health` | GET | 헬스 체크 |
 | `/api/generation/display-list` | POST | 상품 정보를 받아 html 코드를 생성하여 반환 |
 | `/api/generation/image` | POST | 이미지 주소를 받아 프롬프트(영문)로 수정한 이미지 url 반환 |
+| `/api/generation/upload-image` | POST | 이미지 파일을 받아 저장 후 접근 url 제공 |
 | `/docs` | GET | API 문서 (Swagger UI) |
 | `/redoc` | GET | API 문서 (redoc) |

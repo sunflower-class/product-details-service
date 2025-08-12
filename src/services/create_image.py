@@ -131,6 +131,8 @@ def download_image(
             with open(filepath, 'wb') as f:
                 f.write(response.content)
             print(f"이미지 다운로드 완료: {filepath}")
+            
+            return filepath
         else:
             print(f"오류 발생: HTTP {response.status_code}")
     except Exception as e:

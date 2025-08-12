@@ -1,13 +1,22 @@
+import os
+import uuid
+import shutil
+
 from typing import Dict, Any
 from fastapi import APIRouter, Request, HTTPException
 from typing import List
 from pydantic import BaseModel
+
+from fastapi import FastAPI, File, UploadFile, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 from src.services.kafka_service import handle_kafka_production
 from src.services.create_html import product_to_html
 from src.services.create_image import create_image, reshape_image, download_image
 
 from src.core.config import MODE
+
+STATIC_DIR = "static/images"
 
 # APIRouter 인스턴스 생성
 router = APIRouter(prefix="/api/generation")
@@ -75,3 +84,26 @@ async def generate_image(info: ImageInfo, request: Request):
     producer = request.app.state.producer
     return handle_kafka_production(producer, { "image_url": res.data[0].url })
 
+@router.post("/upload-image", tags=["Images"])
+async def upload_image(url: str, request: Request):
+    """
+    이미지 파일을 직접 업로드받아 서버에 저장하고,
+    저장된 이미지의 URL을 반환합니다.
+    """
+    try:
+        filepath = download_image(url=url, path=STATIC_DIR, ext=None)
+
+        # 서버에서 접근 가능한 URL 생성
+        # request.base_url은 'http://127.0.0.1:8000/' 같은 서버의 기본 주소를 나타냅니다.
+        server_url = str(request.base_url)
+        print(server_url, filepath)
+        saved_url = f"{server_url}{filepath}"
+        
+        print(f"✅ 파일 저장 완료: {filepath}")
+        print(f"🔗 제공 URL: {saved_url}")
+        
+        return {"filepath": filepath, "saved_url": saved_url}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"파일 업로드 중 오류 발생: {str(e)}")
+    
