@@ -71,9 +71,6 @@ jobs:
         sed -i "s|image: buildingbite/sangsangplus-product-details:.*|image: buildingbite/sangsangplus-product-details:latest|g" kubernetes/deploy.yml
         kubectl get namespace sangsangplus-backend || kubectl create namespace sangsangplus-backend
         
-        # Apply secrets first
-        kubectl apply -f kubernetes/secret.yaml
-        
         # Deploy the application
         kubectl apply -f kubernetes/deploy.yml
         kubectl rollout status deployment/product-details-service -n sangsangplus-backend --timeout=600s
