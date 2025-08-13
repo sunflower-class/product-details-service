@@ -1,11 +1,12 @@
 # main.py
-
+import os
 import json
 import threading
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from confluent_kafka import Producer, Consumer, KafkaException
 
 from src.core.config import KAFKA_BROKER, TOPIC_NAME, MODE
@@ -81,6 +82,11 @@ app = FastAPI(
 
 # --- 라우터 포함 ---
 app.include_router(api_router)
+
+STATIC_DIR = "static/images"
+os.makedirs(STATIC_DIR, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- 메인 실행 ---
 if __name__ == '__main__':
