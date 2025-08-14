@@ -102,7 +102,7 @@ def generate_product_page_concept(product_info: str, product_image_url: str) -> 
     1. **크리에이티브 디렉터가 되세요:** 각 블록에 대해 구체적이고 창의적이며 적절한 시각적 스타일을 고안하세요. 모든 것에 하나의 스타일을 사용하지 마세요. 블록의 목적을 생각하고 그에 따라 디자인하세요.
     2. **선택적 생성:** `product_info`에 충분한 정보가 있는 경우에만 블록을 생성하세요. 콘텐츠를 새로 만들지 마세요.
     3. **동일한 여러 블록타입 사용(선택):** 블록타입은 중복하여 사용 가능합니다. 긴 내용을 하나의 블록에 전부 담지 말고 분할하여 만드세요.
-    3. **한국어 사용:** 모든 언어는 한국어를 사용해야합니다.
+    4. **한국어 사용:** 모든 언어는 한국어를 사용해야합니다.
     """
 
     human_prompt = "{product_info}"
@@ -169,31 +169,65 @@ def get_concept_html_template(product_page: ProductPage) -> any:
         html_results.append(create_html_block(result, style_concept))
 
     return html_results
+
+class ProductCheck(BaseModel):
+    """html 코드가 현재 상품 설명과 관련 있는지 확인합니다."""
+    check: bool = Field(description="html 코드와 현재 상품 설명과 관련있는지 bool 값으로 리턴합니다.")
+    reason: str = Field(description="검열 결과를 상세히 작성합니다.")
+
+def check_html(block: any, html: str) -> bool:
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, api_key=os.getenv("OPENAI_API_KEY"))
+    structured_llm = llm.with_structured_output(ProductCheck)
+    system_prompt = """
+    당신은 HTML 코드 검열관 입니다. 당신의 임무는 주어진 HTML 코드와, 블록에 대한 정보가 일치하는지 확인하는 것입니다.
     
+    ### **핵심 검열 가이드**
+
+    1. **블록 정보 초과:** 블록에 없는 정보가 HTML 코드에 포함되어 있으면 안됩니다.
+
+    2. **블록 정보 불일치:** 블록에 있는 정보와 HTML 코드에 포함된 정보가 불일치하면 안됩니다.
+    
+    3. **블록 정보 부족:** 블록에 있는 정보가 HTML 코드에 80% 이상 포함되어 있어야 합니다.
+
+    ### **주의사항**
+
+    * 위 가이드라인에 따라 검열을 통과하면 True, 실패하면 False 를 리턴하고 이유를 제시하세요.
+    """
+
+    human_prompt = "html 코드: {html_info}, 블록 정보: {block_info}"
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", human_prompt)
+    ])
+
+    chain = prompt | structured_llm
+    result = chain.invoke({"html_info": html, "block_info": block})
+    print("block check.", result.check, result.reason)
+    return result.check
+
 # -------------------------------------------------------------
 # 4. 템플릿 사용하여 블록 html 만들기
 # -------------------------------------------------------------
 
 def create_html_block(block: any, style: StyleConcept) -> str:
     enhancer_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, api_key=os.getenv("OPENAI_API_KEY"))
+
     system_prompt = """
-    당신은 세계 최고 수준의 아트 디렉터입니다. 당신의 임무는 html 템플릿들과 유사도 정보, 들어가야 할 내용을 받아, 블럭의 컨셉에 맞는 독창적이고 상세한 시각적 html 블럭를 완성하는 것입니다.
+    당신은 숙련된 HTML 템플릿 편집 전문가입니다. 당신의 임무는 주어진 HTML 템플릿의 **기존 구조와 레이아웃 스타일은 절대 변경하지 않으면서**, 새로 제공되는 데이터에 맞게 **문구, 이미지 프롬프트, 색상, 테마**와 같은 지정된 요소만을 정밀하게 수정하여 최종 HTML 코드를 생성하는 것입니다.
+
+    ### **핵심 가이드 원칙**
+
+    1.  **구조 보존의 원칙:** 가장 중요한 규칙은 원본 템플릿의 HTML 태그 구조(부모-자식 관계, 순서), CSS 클래스 및 ID, 레이아웃을 정의하는 핵심 스타일(예: `display`, `position`, `grid`, `flex`, 골격이 되는 `padding`과 `margin`)을 **절대 변경하지 않는 것**입니다. 템플릿의 뼈대는 그대로 유지해야 합니다.
+
+    2.  **데이터 중심의 수정:** 당신의 역할은 창의적인 디자인 제안이 아니라, 주어진 데이터를 템플릿의 정확한 위치에 삽입하고 교체하는 것입니다. 문구는 문구로, 이미지 소스는 이미지 소스로, 색상 코드는 색상 코드로 정확하게 대체하는 데 집중하세요.
     
-    **핵심 가이드 원칙**
+    3.  **목록의 아이템 추가:** 당신은 주어진 템플릿의 리스트 형태의 목록에 들어가야 할 아이템의 갯수를 변경할 수 있습니다. 리스트 아이템의 추가, 삭제를 적절히 사용하세요.
 
-    1.  **컨셉의 시각화:** 블럭이 전달하고자 하는 핵심 메시지(예: '혁신적인 기술', '편안함', '신뢰도')를 내용을 보고 시각적으로 어떻게 표현할지 깊이 고민하세요. 템플릿과 공통 컨셉 스타일을 참고하여 색상, 레이아웃, 타이포그래피, 여백 등을 통해 해당 컨셉을 구체화해야 합니다.
-    2.  **정적인 임팩트:** 최종 결과물은 정적인 이미지입니다. 따라서 움직임(애니메이션, 호버 효과) 없이도 시선을 사로잡고 정보가 명확히 전달될 수 있는 강렬한 시각적 디자인을 구상해야 합니다.
-    
-    **당신의 작업 지시**
+    ### **주의사항**
 
-    기본 템플릿와 전체 스타일 컨셉을 바탕으로 블록 html 코드를 생성하세요. 당신의 목표는 아래 원칙에 따라 전문가 웹디자이너 수준의 html 코드로 만드는 것입니다.
-
-    1.  **독창적 스타일 제안:** `style_concept`을 참고하되, 블럭의 `block_type`과 내용에 가장 잘 어울리는 구체적인 디자인 스타일(예: 미니멀리즘, 타이포그래피 중심, 인포그래픽 스타일 등)을 스스로 생각하세요.
-    2.  **카피와 디자인의 조화:** 설득력 있게 다듬은 한글 카피가 디자인 요소와 어떻게 어우러져야 하는지 생각하세요.
-    3.  **최종 출력:** 위 모든 요소를 종합하여, 당신의 창의적인 생각을 html 코드로 즉시 변환하세요.
-
-    **주의**
-    최종 출력은 반드시 html 언어로 된 코드만을 반환해야 합니다.
+    * 최종 결과물은 다른 부가 설명 없이, 오직 완성된 **HTML 코드**여야만 합니다.
+    * 요청되지 않은 HTML 구조 변경이나 창의적인 스타일 추가는 **절대 금지**입니다. 주어진 역할에 충실하게 데이터를 반영하는 데에만 집중하세요.
+    * 기존에 작성된 템플릿을 그대로 사용해서는 안됩니다. 반드시 **주어진 상품 정보에 맞게 수정**해서 사용해야 합니다.
     """
 
     human_prompt_template = """
@@ -210,9 +244,14 @@ def create_html_block(block: any, style: StyleConcept) -> str:
         "style_concept": style.model_dump_json(indent=2),
         "template_info": block,
     })
+
+    # print("html", html)
+    # print("block", block["content"])
     
+    check = check_html(block=block["content"], html=html)
+
     # 강화된 프롬프트로 새로운 블럭 객체를 만들어 반환
-    return markdown_to_html(html)
+    return markdown_to_html(html) if check else None
 
 # -------------------------------------------------------------
 # 5. 이미지 생성하기
@@ -267,6 +306,8 @@ def process_html_documents(
     """
     processed_html_list = []
     for html_doc in html_list:
+        if html_doc is None:
+            continue
         processed_doc = _generate_images_in_html(html_doc, product_image_url)
         processed_doc = processed_doc.replace('\n', '')
         processed_doc = processed_doc.replace("\'", '"')
