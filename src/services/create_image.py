@@ -96,7 +96,9 @@ def reshape_image(prompt: str, image_url: str, size: str = "default") -> any:
 
     model_key = "kontext-dev"
 
+    print("prompt", prompt)
     en_prompt = translate_prompt(prompt=prompt)
+    print("en_prompt", en_prompt)
 
     response = client.images.generate(
         model=f"black-forest-labs/{models[model_key][0]}",
