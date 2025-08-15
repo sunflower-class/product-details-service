@@ -51,7 +51,7 @@ class HtmlGenerationFlow:
             if not product_response:
                 raise Exception("Product 서비스 호출 실패")
             
-            product_id = product_response.product_id
+            product_id = product_response.productId
             print(f"✅ Product 생성 완료 - ID: {product_id}")
             
             # 2. ProductDetails 레코드 생성 (먼저 생성해야 이미지에서 참조 가능)

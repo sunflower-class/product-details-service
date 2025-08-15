@@ -18,21 +18,22 @@ class ProductCreateRequest(BaseModel):
     status: str = 'ACTIVE'  # 상태 (ACTIVE, INACTIVE, DRAFT)
     user_id: str  # 사용자 ID
     source: str = 'DETAIL_SERVICE'  # 출처
-    metadata: Optional[Dict[str, Any]] = None  # 추가 메타데이터
+    metadata: Optional[str] = None  # 추가 메타데이터 (JSON 문자열)
 
 class ProductResponse(BaseModel):
     """Product 서비스 응답"""
-    product_id: int
+    productId: int  # camelCase로 변경
+    userId: str
     name: str
     description: str
-    category: Optional[str]
-    price: Optional[float]
+    category: str
+    price: float
     brand: Optional[str]
-    status: str
-    user_id: str
     source: str
-    created_at: str
-    updated_at: str
+    status: str
+    metadata: str
+    createdAt: str  # camelCase로 변경
+    updatedAt: str  # camelCase로 변경
 
 class ProductClient:
     """Product 서비스 HTTP 클라이언트"""
@@ -186,6 +187,13 @@ def parse_product_data(product_data_str: str, user_id: str) -> ProductCreateRequ
             if len(category_part) < 50:
                 category = category_part
     
+    import json
+    
+    metadata_dict = {
+        'original_input': product_data_str,
+        'parsed_at': datetime.now().isoformat()
+    }
+    
     return ProductCreateRequest(
         name=name,
         description=description,
@@ -193,10 +201,7 @@ def parse_product_data(product_data_str: str, user_id: str) -> ProductCreateRequ
         price=price if price else 0,  # 기본값: 0
         brand=brand,
         user_id=user_id,  # Product 서비스에서 UUID 변환 처리
-        metadata={
-            'original_input': product_data_str,
-            'parsed_at': datetime.now().isoformat()
-        }
+        metadata=json.dumps(metadata_dict)  # JSON 문자열로 변환
     )
 
 # 글로벌 인스턴스
