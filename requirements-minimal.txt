@@ -1,26 +1,32 @@
-# Core dependencies only
+# Core dependencies only (ChromaDB/ML removed)
 fastapi==0.116.1
 uvicorn==0.35.0
 confluent-kafka==2.11.0
 python-dotenv==1.1.1
+pydantic==2.11.7
 
-# OpenAI and AI dependencies
+# OpenAI and AI dependencies (ChromaDB removed)
 openai==1.97.0
 langchain==0.3.26
 langchain-core==0.3.69
 langchain-openai==0.3.28
-langchain-text-splitters==0.3.8
-chromadb==1.0.15
+# chromadb==1.0.15  # REMOVED: No longer needed
 
 # Together AI for image generation
 together==1.5.21
 
 # Essential utilities
 requests==2.32.4
+httpx==0.28.1
 beautifulsoup4==4.13.4
 pandas==2.3.1
 Pillow==11.3.0
 lxml==6.0.0
 
+# Database dependencies
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.41
+alembic==1.13.2
+
 # Azure storage (if needed)
-azure.storage.blob==12.16.0
+# azure-storage-blob==12.16.0  # Uncomment when using Azure PostgreSQL

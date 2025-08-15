@@ -17,7 +17,7 @@ cachetools==5.5.2
 certifi==2025.7.14
 cffi==1.17.1
 charset-normalizer==3.4.2
-chromadb==1.0.15
+# chromadb==1.0.15  # REMOVED: ChromaDB 완전 제거됨
 click==8.1.8
 coloredlogs==15.0.1
 comm==0.2.2
@@ -99,7 +99,7 @@ numpy==2.2.6
 # nvidia-nvjitlink-cu12==12.6.85
 # nvidia-nvtx-cu12==12.6.77
 oauthlib==3.3.1
-# onnxruntime==1.22.1
+# onnxruntime==1.22.1  # REMOVED: ML 모델 사용 안함
 openai==1.97.0
 opentelemetry-api==1.35.0
 opentelemetry-exporter-otlp-proto-common==1.35.0
@@ -148,7 +148,7 @@ rsa==4.9.1
 safetensors==0.5.3
 scikit-learn==1.7.1
 scipy==1.15.3
-# sentence-transformers==5.0.0
+# sentence-transformers==5.0.0  # REMOVED: 임베딩 불필요
 shellingham==1.5.4
 six==1.17.0
 sniffio==1.3.1
@@ -164,12 +164,12 @@ tiktoken==0.9.0
 together==1.5.21
 tokenizers==0.21.2
 tomli==2.2.1
-# torch==2.7.1
+# torch==2.7.1  # REMOVED: PyTorch 불필요
 tornado==6.5.1
 tqdm==4.67.1
 traitlets==5.14.3
-# transformers==4.53.3
-# triton==3.3.1
+# transformers==4.53.3  # REMOVED: Transformers 불필요
+# triton==3.3.1  # REMOVED: CUDA 관련 불필요
 typer==0.15.4
 # typing==3.7.4.3
 typing-inspection==0.4.1
