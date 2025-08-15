@@ -131,12 +131,12 @@ class ImageManager:
             s3_key = f"product-images/{image_type}/{image_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
             
             print(f"📤 S3 업로드 중: {bucket}/{s3_key}")
+            # 버킷 정책으로 public 접근이 설정되어 있으므로 ACL 불필요
             s3_client.put_object(
                 Bucket=bucket,
                 Key=s3_key,
                 Body=response.content,
-                ContentType='image/jpeg',
-                ACL='public-read'  # 공개 읽기 권한 설정
+                ContentType='image/jpeg'
             )
             
             # 4. S3 URL 반환 (public-read ACL로 직접 접근 가능)

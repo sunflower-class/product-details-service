@@ -71,22 +71,23 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /api/generation/actuator/health
-            port: 5001
-          initialDelaySeconds: 300
-          timeoutSeconds: 60
-          periodSeconds: 60
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /api/generation/actuator/health
-            port: 5001
-          initialDelaySeconds: 240
-          timeoutSeconds: 60
-          periodSeconds: 30
-          failureThreshold: 10
+        # 프로브 임시 비활성화 - 성능 이슈로 인한 불안정성 해결
+        # livenessProbe:
+        #   httpGet:
+        #     path: /api/generation/actuator/health
+        #     port: 5001
+        #   initialDelaySeconds: 300
+        #   timeoutSeconds: 60
+        #   periodSeconds: 60
+        #   failureThreshold: 3
+        # readinessProbe:
+        #   httpGet:
+        #     path: /api/generation/actuator/health
+        #     port: 5001
+        #   initialDelaySeconds: 240
+        #   timeoutSeconds: 60
+        #   periodSeconds: 30
+        #   failureThreshold: 10
 # volumeMounts:
         # - name: chroma-data
         #   mountPath: /app/src/_data
