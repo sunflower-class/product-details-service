@@ -220,6 +220,7 @@ class HtmlGenerationFlow:
             image_data = image_manager.generate_and_store_image(
                 product_details_id=product_details_id,
                 prompt=prompt,
+                user_id=user_id,
                 image_type='product',
                 product_id=product_id
             )

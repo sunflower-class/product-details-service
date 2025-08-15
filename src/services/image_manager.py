@@ -27,6 +27,7 @@ class ImageManager:
         self,
         product_details_id: int,
         prompt: str,
+        user_id: str,
         image_type: str = 'product',
         reference_url: Optional[str] = None,
         product_id: Optional[int] = None
@@ -69,6 +70,7 @@ class ImageManager:
             image_record = ProductImage(
                 product_details_id=product_details_id,
                 product_id=product_id,
+                user_id=user_id,
                 original_prompt=prompt,
                 translated_prompt=translated_prompt,
                 temp_url=temp_url,
@@ -104,39 +106,47 @@ class ImageManager:
         임시 URL의 이미지를 S3에 업로드합니다.
         S3 설정이 완료되면 구현
         """
-        # TODO: S3 업로드 로직 구현
-        # import boto3
-        # import requests
-        # 
-        # try:
-        #     # 1. 임시 URL에서 이미지 다운로드
-        #     response = requests.get(temp_url)
-        #     image_data = response.content
-        #     
-        #     # 2. S3 클라이언트 생성
-        #     s3_client = boto3.client('s3')
-        #     bucket = os.getenv('S3_BUCKET_NAME')
-        #     
-        #     # 3. S3 키 생성 (폴더 구조)
-        #     s3_key = f"products/images/{image_type}/{image_id}.jpg"
-        #     
-        #     # 4. S3 업로드
-        #     s3_client.put_object(
-        #         Bucket=bucket,
-        #         Key=s3_key,
-        #         Body=image_data,
-        #         ContentType='image/jpeg'
-        #     )
-        #     
-        #     # 5. S3 URL 반환
-        #     return f"https://{bucket}.s3.amazonaws.com/{s3_key}"
-        # 
-        # except Exception as e:
-        #     print(f"S3 업로드 실패: {e}")
-        #     return None
-        
-        print(f"⚠️ S3 업로드 대기 중 (image_id: {image_id})")
-        return None
+        try:
+            import boto3
+            import requests
+            from datetime import datetime
+            
+            # 1. 임시 URL에서 이미지 다운로드
+            print(f"📥 이미지 다운로드 중: {temp_url}")
+            response = requests.get(temp_url, timeout=30)
+            if response.status_code != 200:
+                print(f"❌ 이미지 다운로드 실패: {response.status_code}")
+                return None
+
+            # 2. S3 클라이언트 생성
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.getenv('AWS_REGION', 'ap-northeast-2')
+            )
+
+            # 3. S3에 업로드
+            bucket = os.getenv('S3_BUCKET_NAME')
+            s3_key = f"product-images/{image_type}/{image_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            
+            print(f"📤 S3 업로드 중: {bucket}/{s3_key}")
+            s3_client.put_object(
+                Bucket=bucket,
+                Key=s3_key,
+                Body=response.content,
+                ContentType='image/jpeg',
+                ACL='public-read'  # 공개 읽기 권한 설정
+            )
+            
+            # 4. S3 URL 반환 (public-read ACL로 직접 접근 가능)
+            s3_url = f"https://{bucket}.s3.amazonaws.com/{s3_key}"
+            print(f"✅ S3 업로드 완료: {s3_url}")
+            return s3_url
+
+        except Exception as e:
+            print(f"❌ S3 업로드 실패: {e}")
+            return None
     
     def get_image_by_id(self, image_id: int) -> Optional[Dict[str, Any]]:
         """ID로 이미지 정보를 조회합니다."""

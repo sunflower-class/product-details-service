@@ -28,5 +28,8 @@ psycopg2-binary==2.9.9
 sqlalchemy==2.0.41
 alembic==1.13.2
 
+# AWS S3 support
+boto3==1.35.44
+
 # Azure storage (if needed)
 # azure-storage-blob==12.16.0  # Uncomment when using Azure PostgreSQL

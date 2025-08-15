@@ -39,29 +39,54 @@ spec:
             secretKeyRef:
               name: product-details-secret
               key: together-api-key
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: database-url
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: aws-secret-access-key
+        - name: S3_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: s3-bucket-name
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: aws-region
         resources:
           requests:
-            memory: "280Mi"
+            memory: "512Mi"
             cpu: "210m"
           limits:
-            memory: "350Mi"
+            memory: "1Gi"
             cpu: "500m"
         livenessProbe:
           httpGet:
             path: /api/generation/actuator/health
             port: 5001
-          initialDelaySeconds: 120
-          timeoutSeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 300
+          timeoutSeconds: 60
+          periodSeconds: 60
           failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /api/generation/actuator/health
             port: 5001
-          initialDelaySeconds: 60
-          timeoutSeconds: 5
-          periodSeconds: 5
-          failureThreshold: 5
+          initialDelaySeconds: 240
+          timeoutSeconds: 60
+          periodSeconds: 30
+          failureThreshold: 10
 # volumeMounts:
         # - name: chroma-data
         #   mountPath: /app/src/_data
