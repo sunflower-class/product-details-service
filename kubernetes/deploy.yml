@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: product-details-service
-        image: buildingbite/sangsangplus-product-details:optimized-v2
+        image: buildingbite/sangsangplus-product-details:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 5001

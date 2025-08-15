@@ -92,6 +92,35 @@ STABLE_TEMPLATE = """
             padding: 15px;
             border-bottom: 1px solid #f0f0f0;
         }}
+        .image-gallery {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 40px 0;
+        }}
+        .image-container {{
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }}
+        .image-container:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }}
+        .product-image {{
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }}
+        .image-caption {{
+            padding: 15px;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+        }}
     </style>
 </head>
 <body>
@@ -141,21 +170,24 @@ SECTION_TEMPLATES = {
     """
 }
 
+class FeatureItem(BaseModel):
+    """특징 아이템"""
+    title: str = Field(description="특징 제목")
+    description: str = Field(description="특징 설명")
+
+class SpecificationItem(BaseModel):
+    """사양 아이템"""
+    label: str = Field(description="사양 항목명")
+    value: str = Field(description="사양 값")
+
 class ProductContent(BaseModel):
     """GPT가 생성할 구조화된 콘텐츠"""
     hero_title: str = Field(description="제품 메인 타이틀")
     hero_description: str = Field(description="제품 메인 설명 (2-3문장)")
     primary_color: str = Field(description="주 색상 (hex 코드)", default="#4A90E2")
     secondary_color: str = Field(description="보조 색상 (hex 코드)", default="#7BB3F0")
-    features: List[Dict[str, str]] = Field(
-        description="특징 리스트, 각각 title과 description 포함",
-        min_items=2,
-        max_items=6
-    )
-    specifications: List[Dict[str, str]] = Field(
-        description="사양 리스트, 각각 label과 value 포함",
-        min_items=2
-    )
+    features: List[FeatureItem] = Field(description="특징 리스트 (2-6개)")
+    specifications: List[SpecificationItem] = Field(description="사양 리스트")
 
 def generate_structured_content(product_info: str) -> ProductContent:
     """상품 정보에서 구조화된 콘텐츠를 추출합니다."""
@@ -206,8 +238,8 @@ def build_html_from_content(content: ProductContent) -> str:
         feature_cards = []
         for feature in content.features:
             card_html = SECTION_TEMPLATES['feature_card'].format(
-                title=feature.get('title', ''),
-                description=feature.get('description', '')
+                title=feature.title,
+                description=feature.description
             )
             feature_cards.append(card_html)
         
@@ -221,8 +253,8 @@ def build_html_from_content(content: ProductContent) -> str:
         spec_rows = []
         for spec in content.specifications:
             row_html = SECTION_TEMPLATES['spec_row'].format(
-                label=spec.get('label', ''),
-                value=spec.get('value', '')
+                label=spec.label,
+                value=spec.value
             )
             spec_rows.append(row_html)
         
@@ -255,8 +287,14 @@ def generate_hybrid_html(
         생성된 HTML (전체 페이지)
     """
     
-    # 이미지 다운로드 (유효성 검사)
-    download_image(product_image_url, ext=None)
+    # 이미지 다운로드 (유효성 검사) - 빈 URL 체크
+    if product_image_url and product_image_url.strip():
+        try:
+            download_image(product_image_url, ext=None)
+        except Exception as e:
+            print(f"다운로드 중 오류 발생: {e}")
+    else:
+        print("⚠️ 이미지 URL이 제공되지 않았습니다.")
     
     try:
         # 1. GPT로 구조화된 콘텐츠 생성
