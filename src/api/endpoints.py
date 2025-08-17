@@ -70,8 +70,8 @@ async def generate_html_codes(
     print(f"📝 사용자 {user_id} HTML 생성 요청")
     
     # Redis 큐에 작업 제출 (Worker 서비스가 처리)
-    # 이미지 URL이 없으면 기본 플레이스홀더 사용
-    image_url = info.product_image_url.strip() if info.product_image_url else "https://via.placeholder.com/400x300?text=Product+Image"
+    # 이미지 URL이 없으면 기본 플레이스홀더 사용 (DNS 이슈 방지)
+    image_url = info.product_image_url.strip() if info.product_image_url else "https://placehold.co/400x300/png?text=Product+Image"
     
     result = task_manager.submit_task(
         product_data=info.product_data.strip(),
@@ -304,7 +304,7 @@ async def test_notification_flow(
         # 간단한 테스트 작업 등록
         result = task_manager.submit_task(
             product_data="테스트 상품 - 알림 플로우 검증용",
-            product_image_url="https://via.placeholder.com/400x300.png?text=Test+Product",
+            product_image_url="https://placehold.co/400x300/png?text=Test+Product",
             user_id=user_id,
             user_session="test-session"
         )

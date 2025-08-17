@@ -114,9 +114,11 @@ class HtmlGenerationFlow:
                 features=features, target_customer=target_customer, tone=tone
             )
             
-            # 최소 1개 이미지는 있어야 함 (원본)
-            if not generated_images and not original_image_data:
-                raise Exception("모든 이미지 생성/저장 실패")
+            # 원본 이미지가 있으면 계속 진행 (추가 이미지 실패는 허용)
+            if not original_image_data:
+                raise Exception("원본 이미지 저장 실패")
+            elif not generated_images:
+                print("⚠️ 추가 이미지 생성 실패, 원본 이미지만 사용")
             
             # 5. 모든 이미지 수집
             all_images = [original_image_data] + generated_images
@@ -241,6 +243,21 @@ class HtmlGenerationFlow:
         """원본 이미지를 ORIGINAL로 저장"""
         
         try:
+            # 이미지 URL 접귀 가능성 간단 확인
+            import requests
+            print(f"🔍 원본 이미지 URL 확인 중: {image_url}")
+            
+            try:
+                # 빠른 HEAD 요청으로 URL 유효성 확인
+                response = requests.head(image_url, timeout=10)
+                if response.status_code >= 400:
+                    print(f"⚠️ 원본 이미지 URL 접귀 불가: HTTP {response.status_code}")
+                    # URL이 잘못되어도 기본 플레이스홀더로 대체
+                    image_url = "https://placehold.co/400x300/png?text=Product+Image"
+            except Exception as url_check_error:
+                print(f"⚠️ 원본 이미지 URL 확인 실패 ({url_check_error}), 플레이스홀더 사용")
+                image_url = "https://placehold.co/400x300/png?text=Product+Image"
+            
             with simple_db.get_session() as db:
                 original_image = ProductImage(
                     product_details_id=product_details_id,
@@ -301,9 +318,9 @@ class HtmlGenerationFlow:
                 generated_images.append(image_data)
                 print(f"✅ 이미지 {i+1} 생성 완료")
             else:
-                # 이미지 생성 실패 시 에러 발생 (전체 플로우 중단)
+                # 이미지 생성 실패 시 경고만 출력하고 계속 (전체 플로우 중단 방지)
                 error_msg = image_data.get('error', 'Unknown error') if image_data else 'No response'
-                raise Exception(f"이미지 {i+1} 생성 실패: {error_msg}")
+                print(f"⚠️ 이미지 {i+1} 생성 실패 (무시하고 계속): {error_msg}")
         
         return generated_images
     
@@ -386,7 +403,7 @@ class HtmlGenerationFlow:
         
         try:
             # 기존 하이브리드 생성 방식 사용, 하지만 이미지는 우리가 생성한 것들 사용
-            primary_image = image_urls[0] if image_urls else "https://via.placeholder.com/400x300"
+            primary_image = image_urls[0] if image_urls else "https://placehold.co/400x300/png?text=Product+Image"
             
             # 추가 정보를 반영한 상품 데이터 보강
             enhanced_product_data = self._enhance_product_data(

@@ -113,9 +113,16 @@ class ImageManager:
             
             # 1. 임시 URL에서 이미지 다운로드
             print(f"📥 이미지 다운로드 중: {temp_url}")
-            response = requests.get(temp_url, timeout=30)
-            if response.status_code != 200:
-                print(f"❌ 이미지 다운로드 실패: {response.status_code}")
+            try:
+                response = requests.get(temp_url, timeout=30)
+                if response.status_code != 200:
+                    print(f"❌ 이미지 다운로드 실패: HTTP {response.status_code}")
+                    return None
+            except requests.exceptions.RequestException as e:
+                print(f"❌ 이미지 다운로드 네트워크 오류: {e}")
+                return None
+            except Exception as e:
+                print(f"❌ 이미지 다운로드 실패: {e}")
                 return None
 
             # 2. S3 클라이언트 생성
