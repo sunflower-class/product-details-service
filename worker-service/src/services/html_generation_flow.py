@@ -16,7 +16,9 @@ class HtmlGenerationFlow:
     """HTML 생성 전체 플로우 관리"""
     
     def __init__(self):
-        self.max_images = 3  # 생성할 최대 이미지 수
+        import os
+        # 환경 변수로 이미지 생성 수 제어 (기본값 0)
+        self.max_images = int(os.environ.get("MAX_GENERATED_IMAGES", "0"))
     
     async def generate_complete_html(
         self,
