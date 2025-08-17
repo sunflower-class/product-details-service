@@ -2,9 +2,8 @@ import os
 import uuid
 import shutil
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
-from typing import List
 from pydantic import BaseModel
 
 from fastapi import FastAPI, File, UploadFile, Request, HTTPException
@@ -41,6 +40,13 @@ async def send_message(message_data: Dict[str, Any], request: Request):
 class ProductInfo(BaseModel):
     product_data: str
     product_image_url: str
+    user_id: Optional[str] = None
+    features: Optional[List[str]] = None
+    target_customer: Optional[str] = None
+    tone: Optional[str] = None
+    
+    class Config:
+        extra = "ignore"  # 정의되지 않은 추가 필드는 무시
 
 class HtmlElementsResponse(BaseModel):
     html_list: List[str]
@@ -68,7 +74,10 @@ async def generate_html_codes(
         product_data=info.product_data.strip(),
         product_image_url=info.product_image_url.strip(),
         user_id=user_id,
-        user_session=request.headers.get("X-Session-Id")
+        user_session=request.headers.get("X-Session-Id"),
+        features=info.features,
+        target_customer=info.target_customer,
+        tone=info.tone
     )
     
     producer = request.app.state.producer

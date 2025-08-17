@@ -24,7 +24,10 @@ class HtmlGenerationFlow:
         product_image_url: str,
         user_id: str,
         user_session: Optional[str] = None,
-        task_data: Optional[Dict[str, Any]] = None
+        task_data: Optional[Dict[str, Any]] = None,
+        features: Optional[List[str]] = None,
+        target_customer: Optional[str] = None,
+        tone: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         전체 HTML 생성 플로우 실행
@@ -34,6 +37,10 @@ class HtmlGenerationFlow:
             product_image_url: 원본 상품 이미지 URL
             user_id: 사용자 ID
             user_session: 세션 ID (선택)
+            task_data: 작업 관련 데이터
+            features: 상품 주요 특징 목록
+            target_customer: 타겟 고객층
+            tone: 톤앤매너 (예: professional, casual, friendly)
             
         Returns:
             생성 결과 딕셔너리
@@ -62,12 +69,22 @@ class HtmlGenerationFlow:
             # 2. ProductDetails 레코드 생성 (먼저 생성해야 이미지에서 참조 가능)
             print("2️⃣ ProductDetails 레코드 생성 중...")
             with simple_db.get_session() as db:
+                # 추가 정보를 metadata에 저장
+                metadata = {
+                    "generation_settings": {
+                        "features": features or [],
+                        "target_customer": target_customer,
+                        "tone": tone or "professional"
+                    },
+                    "status": "generating"
+                }
+                
                 product_details = ProductDetails(
                     product_id=product_id,
                     user_id=user_id,
                     user_session=user_session,
                     original_product_info=product_data,
-                    generated_html={"status": "generating"},  # 임시 상태
+                    generated_html=metadata,  # 생성 설정 포함
                     used_templates=[],
                     used_categories=[],
                     status='draft'
@@ -91,7 +108,8 @@ class HtmlGenerationFlow:
             # 4. 추가 이미지 생성 (GENERATED)
             print("4️⃣ 추가 이미지 생성 중...")
             generated_images = await self._generate_additional_images(
-                product_details_id, product_data, user_id, product_id
+                product_details_id, product_data, user_id, product_id,
+                features=features, target_customer=target_customer, tone=tone
             )
             
             # 최소 1개 이미지는 있어야 함 (원본)
@@ -109,7 +127,10 @@ class HtmlGenerationFlow:
             
             # 6. HTML 생성 (이미지 URL들 포함)
             print("6️⃣ HTML 생성 중...")
-            html_list = self._generate_html_with_images(product_data, image_urls)
+            html_list = self._generate_html_with_images(
+                product_data, image_urls, features=features, 
+                target_customer=target_customer, tone=tone
+            )
             
             if not html_list:
                 raise Exception("HTML 생성 실패")
@@ -248,14 +269,20 @@ class HtmlGenerationFlow:
         product_details_id: int,
         product_data: str,
         user_id: str,
-        product_id: Optional[int]
+        product_id: Optional[int],
+        features: Optional[List[str]] = None,
+        target_customer: Optional[str] = None,
+        tone: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """추가 이미지들을 생성"""
         
         generated_images = []
         
-        # 상품 데이터에서 이미지 프롬프트 추출
-        prompts = self._extract_image_prompts(product_data)
+        # 상품 데이터에서 이미지 프롬프트 추출 (추가 정보 활용)
+        prompts = self._extract_image_prompts(
+            product_data, features=features, 
+            target_customer=target_customer, tone=tone
+        )
         
         for i, prompt in enumerate(prompts[:self.max_images]):
             print(f"🎨 이미지 {i+1} 생성 중: {prompt[:50]}...")
@@ -278,40 +305,99 @@ class HtmlGenerationFlow:
         
         return generated_images
     
-    def _extract_image_prompts(self, product_data: str) -> List[str]:
-        """상품 데이터에서 이미지 프롬프트 추출"""
+    def _extract_image_prompts(
+        self, 
+        product_data: str, 
+        features: Optional[List[str]] = None,
+        target_customer: Optional[str] = None,
+        tone: Optional[str] = None
+    ) -> List[str]:
+        """상품 데이터에서 이미지 프롬프트 추출 (추가 정보 활용)"""
         
-        # 기본 프롬프트들
+        # 톤에 따른 스타일 설정
+        style_map = {
+            "professional": "professional commercial photography, studio lighting, clean background",
+            "casual": "lifestyle photography, natural lighting, everyday setting",
+            "friendly": "warm and inviting photography, soft lighting, approachable style",
+            "luxury": "premium luxury photography, dramatic lighting, elegant presentation"
+        }
+        
+        photo_style = style_map.get(tone or "professional", style_map["professional"])
+        
+        # 기본 프롬프트들 (톤 반영)
         base_prompts = [
-            f"Product showcase: {product_data[:100]}",
-            f"High quality product image: {product_data[:100]}",
-            f"Commercial product photography: {product_data[:100]}"
+            f"High quality product showcase: {product_data[:80]}, {photo_style}",
+            f"Product hero image: {product_data[:80]}, {photo_style}",
+            f"Commercial product shot: {product_data[:80]}, {photo_style}"
         ]
+        
+        # 특징 기반 프롬프트 추가
+        if features:
+            for i, feature in enumerate(features[:2]):  # 최대 2개 특징 활용
+                base_prompts.append(
+                    f"Product highlighting {feature}: {product_data[:60]}, {photo_style}"
+                )
+        
+        # 타겟 고객 기반 프롬프트 추가
+        if target_customer:
+            context_map = {
+                "young": "modern, trendy, vibrant colors",
+                "adult": "sophisticated, practical, clean design",
+                "professional": "business setting, executive style, premium quality",
+                "family": "family-friendly, home environment, everyday use",
+                "seniors": "clear, simple, comfortable setting"
+            }
+            
+            # 타겟 고객에서 키워드 추출
+            customer_context = "lifestyle photography"
+            for key, context in context_map.items():
+                if key.lower() in target_customer.lower():
+                    customer_context = context
+                    break
+            
+            base_prompts.append(
+                f"Product for {target_customer}: {product_data[:60]}, {customer_context}, {photo_style}"
+            )
         
         # 상품 데이터에서 키워드 추출하여 더 구체적인 프롬프트 생성
         keywords = []
-        
-        # 간단한 키워드 추출
         for line in product_data.lower().split('\n'):
-            if any(word in line for word in ['색상', 'color', '재질', 'material', '크기', 'size']):
-                keywords.append(line.strip())
+            if any(word in line for word in ['색상', 'color', '재질', 'material', '크기', 'size', '기능', 'feature']):
+                keywords.append(line.strip()[:50])
         
         # 키워드 기반 프롬프트 추가
         if keywords:
-            for keyword in keywords[:2]:  # 최대 2개
-                base_prompts.append(f"Product with {keyword}: professional photography")
+            for keyword in keywords[:1]:  # 1개만 추가
+                base_prompts.append(f"Product detail shot: {keyword}, {photo_style}")
         
         return base_prompts[:self.max_images]
     
-    def _generate_html_with_images(self, product_data: str, image_urls: List[str]) -> List[str]:
-        """이미지 URL들을 포함하여 HTML 생성"""
+    def _generate_html_with_images(
+        self, 
+        product_data: str, 
+        image_urls: List[str],
+        features: Optional[List[str]] = None,
+        target_customer: Optional[str] = None,
+        tone: Optional[str] = None
+    ) -> List[str]:
+        """이미지 URL들을 포함하여 HTML 생성 (추가 정보 활용)"""
         
         try:
             # 기존 하이브리드 생성 방식 사용, 하지만 이미지는 우리가 생성한 것들 사용
             primary_image = image_urls[0] if image_urls else "https://via.placeholder.com/400x300"
             
-            # 하이브리드 HTML 생성
-            html_list = generate_hybrid_html(product_data, primary_image)
+            # 추가 정보를 반영한 상품 데이터 보강
+            enhanced_product_data = self._enhance_product_data(
+                product_data, features, target_customer, tone
+            )
+            
+            # 하이브리드 HTML 생성 (보강된 데이터 사용)
+            html_list = generate_hybrid_html(enhanced_product_data, primary_image)
+            
+            # 특징 하이라이트 HTML 추가
+            if features:
+                features_html = self._create_features_html(features, tone)
+                html_list.append(features_html)
             
             # 추가 이미지들을 HTML에 삽입
             if len(image_urls) > 1:
@@ -341,6 +427,73 @@ class HtmlGenerationFlow:
             <h4 style="margin-bottom: 15px; color: #333;">추가 상품 이미지</h4>
             <div style="display: flex; flex-wrap: wrap; gap: 10px;">
                 {"".join(gallery_items)}
+            </div>
+        </div>
+        '''
+    
+    def _enhance_product_data(
+        self, 
+        product_data: str, 
+        features: Optional[List[str]] = None,
+        target_customer: Optional[str] = None,
+        tone: Optional[str] = None
+    ) -> str:
+        """추가 정보를 반영하여 상품 데이터 보강"""
+        
+        enhanced_parts = [product_data]
+        
+        # 타겟 고객 정보 추가
+        if target_customer:
+            enhanced_parts.append(f"\n\n타겟 고객: {target_customer}")
+        
+        # 주요 특징 추가
+        if features:
+            enhanced_parts.append(f"\n\n주요 특징:")
+            for feature in features:
+                enhanced_parts.append(f"• {feature}")
+        
+        # 톤앤매너 반영
+        if tone:
+            tone_context = {
+                "professional": "전문적이고 신뢰할 수 있는",
+                "casual": "편안하고 친근한",
+                "friendly": "따뜻하고 다가가기 쉬운",
+                "luxury": "프리미엄하고 고급스러운"
+            }
+            
+            if tone in tone_context:
+                enhanced_parts.append(f"\n\n브랜드 톤: {tone_context[tone]} 느낌으로 어필")
+        
+        return " ".join(enhanced_parts)
+    
+    def _create_features_html(self, features: List[str], tone: Optional[str] = None) -> str:
+        """특징 하이라이트 HTML 생성"""
+        
+        # 톤에 따른 스타일 조정
+        if tone == "luxury":
+            container_style = "background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border: 1px solid #e0e0e0;"
+            feature_style = "background: rgba(255,255,255,0.9); border-left: 4px solid #d4af37;"
+        elif tone == "casual":
+            container_style = "background: #f8f9fa; border: 1px solid #dee2e6;"
+            feature_style = "background: white; border-left: 4px solid #28a745;"
+        else:  # professional, friendly
+            container_style = "background: #f8f9fa; border: 1px solid #dee2e6;"
+            feature_style = "background: white; border-left: 4px solid #007bff;"
+        
+        feature_items = []
+        for feature in features:
+            feature_items.append(f'''
+                <div style="padding: 12px; margin: 8px 0; {feature_style} border-radius: 4px;">
+                    <span style="font-weight: 600; color: #333;">✓</span>
+                    <span style="margin-left: 8px; color: #555;">{feature}</span>
+                </div>
+            ''')
+        
+        return f'''
+        <div style="margin: 25px 0; padding: 20px; {container_style} border-radius: 8px;">
+            <h4 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">주요 특징</h4>
+            <div>
+                {"".join(feature_items)}
             </div>
         </div>
         '''

@@ -54,7 +54,10 @@ class TaskManager:
         product_data: str,
         product_image_url: str,
         user_id: str,
-        user_session: Optional[str] = None
+        user_session: Optional[str] = None,
+        features: Optional[list] = None,
+        target_customer: Optional[str] = None,
+        tone: Optional[str] = None
     ) -> Dict[str, Any]:
         """작업을 Redis 큐에 제출"""
         
@@ -75,6 +78,9 @@ class TaskManager:
             'product_image_url': product_image_url,
             'user_id': user_id,
             'user_session': user_session,
+            'features': features,
+            'target_customer': target_customer,
+            'tone': tone,
             'submitted_at': datetime.now().isoformat()
         }
         

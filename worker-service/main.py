@@ -76,16 +76,19 @@ class HtmlGenerationWorker:
             
             # HTML 생성 플로우 실행 (모든 작업 포함)
             # - Product 서비스 호출
-            # - 이미지 생성 (Together AI)
+            # - 이미지 생성 (Together AI, 추가 정보 반영)
             # - S3 업로드
-            # - HTML 템플릿 생성
+            # - HTML 템플릿 생성 (특징, 타겟 고객, 톤 반영)
             # - DB 저장
             result = await html_flow.generate_complete_html(
                 product_data=task_data['product_data'],
                 product_image_url=task_data['product_image_url'],
                 user_id=task_data['user_id'],
                 user_session=task_data.get('user_session'),
-                task_data=task_data  # task_id 포함한 전체 데이터 전달
+                task_data=task_data,  # task_id 포함한 전체 데이터 전달
+                features=task_data.get('features'),
+                target_customer=task_data.get('target_customer'),
+                tone=task_data.get('tone')
             )
             
             # 결과 저장
