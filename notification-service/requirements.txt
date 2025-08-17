@@ -1,0 +1,12 @@
+azure-eventhub==5.11.7
+azure-eventhub-checkpointstoreblob==1.1.4
+fastapi==0.116.1
+uvicorn==0.35.0
+pydantic==2.11.7
+python-dotenv==1.1.1
+asyncio==3.4.3
+aiohttp==3.12.15
+requests==2.32.4
+websockets==15.0.1
+SQLAlchemy==2.0.41
+redis==5.0.1

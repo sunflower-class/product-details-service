@@ -23,6 +23,9 @@ pandas==2.3.1
 Pillow==11.3.0
 lxml==6.0.0
 
+# Redis for Worker communication
+redis==5.0.1
+
 # Database dependencies
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.41

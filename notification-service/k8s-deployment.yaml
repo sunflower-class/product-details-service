@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: sangsangplus-backend
+  labels:
+    app: notification-service
+    service: notification
+spec:
+  replicas: 1  # 알림 서비스는 단일 인스턴스로 실행
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        service: notification
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "20.200.193.28/32"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "443,5671,5672"
+    spec:
+      # 일반 노드 풀에 배포
+      nodeSelector:
+        agentpool: agentpool
+      
+      containers:
+      - name: notification-service
+        image: buildingbite/notification-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        
+        env:
+        # Azure Event Hubs Consumer 설정
+        - name: EVENTHUB_CONSUMER_CONNECTION_STRING
+          value: "Endpoint=sb://sangsangplus-eventhubs.servicebus.windows.net/;SharedAccessKeyName=NotificationConsumerKey;SharedAccessKey=mM9nLJ5gXwme9y0cJpoBbaUJXhF+39uZX+AEhEnx6Lw=;EntityPath=notification"
+        - name: NOTIFICATION_EVENTHUB_NAME
+          value: "notification"
+        - name: EVENTHUB_CONSUMER_GROUP
+          value: "$Default"
+        
+        # Redis 설정 (worker-service와 동일한 Redis 사용)
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: redis-host
+        - name: REDIS_PORT
+          value: "6380"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: redis-password
+        - name: REDIS_SSL
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: redis-ssl
+        
+        # 알림 발송 설정
+        - name: NOTIFICATION_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: notification-service-secret
+              key: webhook-url
+              optional: true
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: notification-service-secret
+              key: slack-webhook-url
+              optional: true
+        - name: DISCORD_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: notification-service-secret
+              key: discord-webhook-url
+              optional: true
+        
+        # 기타 설정
+        - name: MODE
+          value: "production"
+        - name: SAVE_NOTIFICATION_LOGS
+          value: "true"
+        
+        # 볼륨 마운트 (로그 저장용)
+        volumeMounts:
+        - name: logs-volume
+          mountPath: /app/logs
+      
+      volumes:
+      - name: logs-volume
+        emptyDir: {}
+      
+      # 이미지 풀 시크릿
+      imagePullSecrets:
+      - name: registry-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: sangsangplus-backend
+  labels:
+    app: notification-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: notification-service

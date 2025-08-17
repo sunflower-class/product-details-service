@@ -16,6 +16,10 @@ spec:
       labels:
         app: product-details-service
     spec:
+      # Product Details 서비스는 agentpool에 배포
+      nodeSelector:
+        agentpool: agentpool
+      
       containers:
       - name: product-details-service
         image: buildingbite/sangsangplus-product-details:latest
@@ -64,13 +68,31 @@ spec:
             secretKeyRef:
               name: product-details-secret
               key: aws-region
+        # Redis 설정 (Azure Redis Cache)
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: redis-host
+        - name: REDIS_PORT
+          value: "6380"  # Azure Redis는 SSL 포트 6380 사용
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: product-details-secret
+              key: redis-password
+        - name: REDIS_SSL
+          value: "true"  # Azure Redis는 SSL 필수
+        # Product Service URL
+        - name: PRODUCT_SERVICE_URL
+          value: "http://product-service.sangsangplus-backend.svc.cluster.local:8000"
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "210m"
+            memory: "256Mi"
+            cpu: "100m"
           limits:
-            memory: "1Gi"
-            cpu: "500m"
+            memory: "512Mi"
+            cpu: "300m"
         # 프로브 임시 비활성화 - 성능 이슈로 인한 불안정성 해결
         # livenessProbe:
         #   httpGet:

@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: html-generation-worker
+  namespace: sangsangplus-backend
+  labels:
+    app: html-generation-worker
+    service: worker
+spec:
+  replicas: 1  # Worker 인스턴스 수 (필요에 따라 조정)
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: html-generation-worker
+  template:
+    metadata:
+      labels:
+        app: html-generation-worker
+        service: worker
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "20.200.193.28/32"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "443,5671,5672"
+    spec:
+      # Worker 전용 노드 풀에 배포
+      nodeSelector:
+        agentpool: workers
+      
+      containers:
+      - name: worker
+        image: buildingbite/html-generation-worker:latest
+        imagePullPolicy: Always
+        
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        
+        env:
+        # Redis 설정 (Azure Redis Cache)
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: redis-host
+        - name: REDIS_PORT
+          value: "6380"  # Azure Redis는 보통 6380 포트 사용 (SSL)
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: redis-password
+        - name: REDIS_SSL
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: redis-ssl
+        
+        # AWS S3 설정
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: aws-secret-access-key
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: aws-region
+        - name: S3_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: s3-bucket-name
+        
+        # OpenAI/Together AI 설정
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: openai-api-key
+        - name: TOGETHER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: together-api-key
+        
+        # Azure Event Hubs 설정 (올바른 연결 문자열 - EntityPath 포함)
+        - name: EVENTHUB_CONNECTION_STRING
+          value: "Endpoint=sb://sangsangplus-eventhubs.servicebus.windows.net/;SharedAccessKeyName=NotificationProducerKey;SharedAccessKey=9r2Q4Mx7bpO1IQJcZHrCz9R9e3m7Wq5Yq+AEhMONSSM=;EntityPath=notification"
+        - name: NOTIFICATION_EVENTHUB_NAME
+          value: "notification"
+        
+        # Product Service 설정
+        - name: PRODUCT_SERVICE_URL
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: product-service-url
+        
+        # Product Details Service 설정 (알림에서 사용할 외부 URL)
+        - name: PRODUCT_DETAILS_SERVICE_URL
+          value: "https://api.buildingbite.com/product-details"
+        
+        # 데이터베이스 설정
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: worker-service-secret
+              key: database-url
+        
+        # 기타 환경 변수
+        - name: MODE
+          value: "kubernetes"
+        - name: LOG_LEVEL
+          value: "INFO"
+        
+        # 라이브니스/레디니스 프로브는 Worker에서는 불필요
+        # (Redis 연결만 체크하면 됨)
+        
+      # 이미지 풀 시크릿 (Private Registry 사용 시)
+      imagePullSecrets:
+      - name: registry-secret
