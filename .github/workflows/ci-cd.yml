@@ -1,10 +1,21 @@
-name: CI/CD Pipeline
+name: Product Details Service CI/CD Pipeline
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'requirements*.txt'
+      - 'Dockerfile*'
+      - 'kubernetes/**'
+      - '.github/workflows/ci-cd.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'requirements*.txt'
+      - 'Dockerfile*'
+      - 'kubernetes/**'
 
 env:
   DOCKER_IMAGE: buildingbite/sangsangplus-product-details
