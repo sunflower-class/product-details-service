@@ -107,7 +107,7 @@ spec:
         
         # Product Details Service 설정 (알림에서 사용할 외부 URL)
         - name: PRODUCT_DETAILS_SERVICE_URL
-          value: "https://api.buildingbite.com/product-details"
+          value: "https://oauth.buildingbite.com"  # 실제 사용하는 도메인으로 변경
         
         # 데이터베이스 설정
         - name: DATABASE_URL
