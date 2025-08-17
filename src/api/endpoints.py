@@ -39,7 +39,7 @@ async def send_message(message_data: Dict[str, Any], request: Request):
 
 class ProductInfo(BaseModel):
     product_data: str
-    product_image_url: str
+    product_image_url: Optional[str] = None  # 선택사항으로 변경
     user_id: Optional[str] = None
     features: Optional[List[str]] = None
     target_customer: Optional[str] = None
@@ -70,9 +70,12 @@ async def generate_html_codes(
     print(f"📝 사용자 {user_id} HTML 생성 요청")
     
     # Redis 큐에 작업 제출 (Worker 서비스가 처리)
+    # 이미지 URL이 없으면 기본 플레이스홀더 사용
+    image_url = info.product_image_url.strip() if info.product_image_url else "https://via.placeholder.com/400x300?text=Product+Image"
+    
     result = task_manager.submit_task(
         product_data=info.product_data.strip(),
-        product_image_url=info.product_image_url.strip(),
+        product_image_url=image_url,
         user_id=user_id,
         user_session=request.headers.get("X-Session-Id"),
         features=info.features,
