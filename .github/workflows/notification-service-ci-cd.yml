@@ -1,0 +1,95 @@
+name: Notification Service CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'notification-service/**'
+      - '.github/workflows/notification-service-ci-cd.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'notification-service/**'
+
+env:
+  DOCKER_IMAGE: buildingbite/notification-service
+  REGISTRY: docker.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKER_IMAGE }}
+        tags: |
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          type=sha,prefix={{branch}}-
+
+    - name: Build and push Notification Service Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./notification-service
+        file: ./notification-service/Dockerfile
+        platforms: linux/amd64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Set up Kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+
+    - name: Deploy Notification Service to sangsangplus-backend namespace
+      run: |
+        sed -i "s|image: buildingbite/notification-service:.*|image: buildingbite/notification-service:latest|g" notification-service/k8s-deployment.yaml
+        kubectl get namespace sangsangplus-backend || kubectl create namespace sangsangplus-backend
+        
+        # Deploy the notification service
+        kubectl apply -f notification-service/k8s-deployment.yaml
+        kubectl rollout status deployment/notification-service -n sangsangplus-backend --timeout=600s
+
+    - name: Run health check
+      run: |
+        kubectl wait --for=condition=available --timeout=300s deployment/notification-service -n sangsangplus-backend
+        
+        # Port forward for health check
+        kubectl port-forward -n sangsangplus-backend svc/notification-service 8080:80 &
+        PF_PID=$!
+        
+        sleep 15
+        curl -f http://localhost:8080/health || exit 1
+        kill $PF_PID
+
+        echo "Notification Service deployment successful!"
