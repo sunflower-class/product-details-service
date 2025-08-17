@@ -51,6 +51,7 @@ class ApiResponse(BaseModel):
 
 @router.post("/display-list", 
              response_model=ApiResponse,
+             status_code=202,
              tags=["Products"])
 async def generate_html_codes(
     info: ProductInfo, 
