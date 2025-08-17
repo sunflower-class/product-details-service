@@ -1,0 +1,89 @@
+name: Worker Service CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'worker-service/**'
+      - '.github/workflows/worker-service-ci-cd.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'worker-service/**'
+
+env:
+  DOCKER_IMAGE: buildingbite/html-generation-worker
+  REGISTRY: docker.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKER_IMAGE }}
+        tags: |
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          type=sha,prefix={{branch}}-
+
+    - name: Build and push Worker Service Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./worker-service
+        file: ./worker-service/Dockerfile
+        platforms: linux/amd64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Set up Kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+
+    - name: Deploy Worker Service to sangsangplus-backend namespace
+      run: |
+        sed -i "s|image: buildingbite/html-generation-worker:.*|image: buildingbite/html-generation-worker:latest|g" worker-service/k8s-deployment.yaml
+        kubectl get namespace sangsangplus-backend || kubectl create namespace sangsangplus-backend
+        
+        # Apply secrets first
+        kubectl apply -f worker-service/k8s-secrets.yaml
+        
+        # Deploy the worker service
+        kubectl apply -f worker-service/k8s-deployment.yaml
+        kubectl rollout status deployment/html-generation-worker -n sangsangplus-backend --timeout=600s
+
+    - name: Verify deployment
+      run: |
+        kubectl wait --for=condition=available --timeout=300s deployment/html-generation-worker -n sangsangplus-backend
+        echo "Worker Service deployment successful!"
