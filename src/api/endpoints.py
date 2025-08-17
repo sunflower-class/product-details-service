@@ -89,11 +89,15 @@ async def generate_html_codes(
         print(f"✅ 작업 제출 완료: {result['task_id']}")
         
         # 즉시 성공 응답 반환 (실제 결과는 나중에 조회)
-        return handle_kafka_production(producer, {
+        kafka_response = handle_kafka_production(producer, {
             "html_list": [],  # Worker가 처리 중
             "task_id": result["task_id"],
             "message": "작업이 Worker 서비스로 전달되었습니다"
         })
+        
+        # task_id를 최상위 레벨에 추가
+        kafka_response["task_id"] = result["task_id"]
+        return kafka_response
     else:
         print(f"❌ 작업 제출 실패: {result.get('error')}")
         return handle_kafka_production(producer, {
