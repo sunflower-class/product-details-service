@@ -122,33 +122,39 @@ class HtmlGenerationWorker:
             return error_result
     
     def update_task_status(self, task_id: str, status: str, error: Optional[str] = None):
-        """작업 상태 업데이트"""
-        status_key = f"{STATUS_PREFIX}{task_id}"
-        status_data = {
-            'status': status,
-            'updated_at': datetime.now().isoformat()
-        }
-        
-        if error:
-            status_data['error'] = error
-        
-        # 상태 저장 (24시간 TTL)
-        self.redis_client.setex(
-            status_key,
-            86400,
-            json.dumps(status_data)
-        )
+        """작업 상태 업데이트 - Redis 연결 실패 시에도 계속 진행"""
+        try:
+            status_key = f"{STATUS_PREFIX}{task_id}"
+            status_data = {
+                'status': status,
+                'updated_at': datetime.now().isoformat()
+            }
+            
+            if error:
+                status_data['error'] = error
+            
+            # 상태 저장 (24시간 TTL)
+            self.redis_client.setex(
+                status_key,
+                86400,
+                json.dumps(status_data)
+            )
+        except Exception as e:
+            print(f"⚠️ Redis 상태 업데이트 실패 (무시하고 계속): {e}")
         
     def store_result(self, task_id: str, result: Dict[str, Any]):
-        """작업 결과 저장"""
-        result_key = f"{RESULT_PREFIX}{task_id}"
-        
-        # 결과 저장 (24시간 TTL)
-        self.redis_client.setex(
-            result_key,
-            86400,
-            json.dumps(result)
-        )
+        """작업 결과 저장 - Redis 연결 실패 시에도 계속 진행"""
+        try:
+            result_key = f"{RESULT_PREFIX}{task_id}"
+            
+            # 결과 저장 (24시간 TTL)
+            self.redis_client.setex(
+                result_key,
+                86400,
+                json.dumps(result)
+            )
+        except Exception as e:
+            print(f"⚠️ Redis 결과 저장 실패 (무시하고 계속): {e}")
     
     async def run(self):
         """Worker 메인 루프"""
