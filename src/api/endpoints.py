@@ -54,7 +54,21 @@ class HtmlElementsResponse(BaseModel):
 class ApiResponse(BaseModel):
     status: str
     data: HtmlElementsResponse
-    task_id: Optional[str] = None    
+    task_id: Optional[str] = None
+
+class ProductDetailsUpdate(BaseModel):
+    product_id: Optional[int] = None
+    original_product_info: Optional[str] = None
+    generated_html: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None  # 'draft', 'published', 'archived'
+    
+    class Config:
+        extra = "ignore"
+
+class ProductDetailsResponse(BaseModel):
+    success: bool
+    message: str
+    data: Optional[Dict[str, Any]] = None    
 
 @router.post("/display-list", 
              response_model=ApiResponse,
@@ -290,6 +304,82 @@ async def list_product_details(
             raise HTTPException(
                 status_code=500,
                 detail=f"조회 중 오류 발생: {str(e)}"
+            )
+
+@router.put("/product-details/{product_details_id}", 
+           response_model=ProductDetailsResponse,
+           tags=["Products"])
+async def update_product_details(
+    product_details_id: int,
+    update_data: ProductDetailsUpdate,
+    user_id: str = Depends(get_user_id)
+):
+    """ProductDetails 업데이트 엔드포인트"""
+    print(f"📝 상품 상세 업데이트 요청: {product_details_id} by {user_id}")
+    
+    with simple_db.get_session() as db:
+        try:
+            # ProductDetails 조회 및 권한 확인
+            product_details = db.query(ProductDetails).filter(
+                ProductDetails.id == product_details_id,
+                ProductDetails.user_id == user_id  # 본인만 수정 가능
+            ).first()
+            
+            if not product_details:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"ProductDetails {product_details_id}를 찾을 수 없거나 수정 권한이 없습니다"
+                )
+            
+            # 업데이트할 필드들 처리
+            updated_fields = []
+            
+            if update_data.product_id is not None:
+                product_details.product_id = update_data.product_id
+                updated_fields.append("product_id")
+            
+            if update_data.original_product_info is not None:
+                product_details.original_product_info = update_data.original_product_info.strip()
+                updated_fields.append("original_product_info")
+            
+            if update_data.generated_html is not None:
+                product_details.generated_html = update_data.generated_html
+                updated_fields.append("generated_html")
+            
+            if update_data.status is not None:
+                if update_data.status not in ['draft', 'published', 'archived']:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="status는 'draft', 'published', 'archived' 중 하나여야 합니다"
+                    )
+                product_details.status = update_data.status
+                updated_fields.append("status")
+            
+            if not updated_fields:
+                return ProductDetailsResponse(
+                    success=False,
+                    message="업데이트할 필드가 없습니다"
+                )
+            
+            # updated_at 자동 갱신 (SQLAlchemy onupdate가 처리)
+            db.commit()
+            db.refresh(product_details)
+            
+            print(f"✅ 상품 상세 업데이트 완료: {product_details_id}, 필드: {updated_fields}")
+            
+            return ProductDetailsResponse(
+                success=True,
+                message=f"상품 상세 정보가 업데이트되었습니다 (필드: {', '.join(updated_fields)})",
+                data=product_details.to_dict()
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"❌ 상품 상세 업데이트 실패: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"업데이트 중 오류 발생: {str(e)}"
             )
 
 @router.post("/test/notification", tags=["Test"])
