@@ -53,7 +53,8 @@ class HtmlElementsResponse(BaseModel):
 
 class ApiResponse(BaseModel):
     status: str
-    data: HtmlElementsResponse    
+    data: HtmlElementsResponse
+    task_id: Optional[str] = None    
 
 @router.post("/display-list", 
              response_model=ApiResponse,
