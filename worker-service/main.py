@@ -6,6 +6,7 @@ HTML Generation Worker Service
 import asyncio
 import json
 import redis
+import redis.exceptions
 import os
 import sys
 from typing import Dict, Any, Optional
@@ -37,7 +38,7 @@ class HtmlGenerationWorker:
         self.running = False
         
     def connect_redis(self):
-        """Redis 연결 (Azure Redis Cache 지원)"""
+        """Redis 연결 (Azure Redis Cache 지원, 연결 풀 사용)"""
         try:
             # Azure Redis Cache 연결 - URL 방식 사용 (더 안정적)
             if REDIS_SSL:
@@ -45,19 +46,32 @@ class HtmlGenerationWorker:
             else:
                 redis_url = f'redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0'
             
+            # 연결 풀 설정으로 안정성 향상
             self.redis_client = redis.from_url(
                 redis_url, 
                 decode_responses=True, 
                 ssl_cert_reqs=None,
-                socket_connect_timeout=10,
-                socket_timeout=10
+                socket_connect_timeout=15,  # 연결 타임아웃 증가
+                socket_timeout=15,          # 소켓 타임아웃 증가
+                socket_keepalive=True,      # 연결 유지 활성화
+                socket_keepalive_options={},
+                health_check_interval=30,   # 30초마다 연결 상태 확인
+                retry_on_timeout=True,      # 타임아웃 시 재시도
+                retry_on_error=[            # 특정 에러 시 재시도
+                    redis.exceptions.ConnectionError,
+                    redis.exceptions.TimeoutError,
+                ],
+                max_connections=10          # 연결 풀 최대 크기
             )
             
+            # 연결 테스트
             self.redis_client.ping()
-            print(f"✅ Redis 연결 성공: {REDIS_HOST}:{REDIS_PORT}")
+            print(f"✅ Redis 연결 성공: {REDIS_HOST}:{REDIS_PORT} (SSL: {REDIS_SSL})")
             return True
+            
         except Exception as e:
             print(f"❌ Redis 연결 실패: {e}")
+            self.redis_client = None
             return False
     
     async def process_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -157,7 +171,7 @@ class HtmlGenerationWorker:
             print(f"⚠️ Redis 결과 저장 실패 (무시하고 계속): {e}")
     
     async def run(self):
-        """Worker 메인 루프"""
+        """Worker 메인 루프 (Redis 연결 복원력 개선)"""
         if not self.connect_redis():
             print("Redis 연결 실패로 Worker를 시작할 수 없습니다.")
             return
@@ -169,8 +183,17 @@ class HtmlGenerationWorker:
         print(f"🔧 환경: {os.environ.get('MODE', 'development')}")
         print("=" * 60)
         
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
         while self.running:
             try:
+                # Redis 연결 상태 확인 및 재연결
+                if not self._ensure_redis_connection():
+                    print("⚠️ Redis 재연결 실패, 5초 후 재시도")
+                    await asyncio.sleep(5)
+                    continue
+                
                 # Redis 큐에서 작업 가져오기 (블로킹, 5초 타임아웃)
                 task = self.redis_client.blpop(TASK_QUEUE, timeout=5)
                 
@@ -183,16 +206,55 @@ class HtmlGenerationWorker:
                     # 비동기 작업 처리
                     await self.process_task(task_data)
                     
+                    # 성공적으로 처리했으므로 에러 카운터 리셋
+                    consecutive_errors = 0
+                    
             except KeyboardInterrupt:
                 print("\n⚠️ Worker 종료 신호 감지")
                 self.running = False
                 
+            except redis.exceptions.ConnectionError as e:
+                consecutive_errors += 1
+                print(f"🔌 Redis 연결 오류 ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    print(f"❌ Redis 연결 오류가 {max_consecutive_errors}회 연속 발생. Worker 종료.")
+                    self.running = False
+                    break
+                
+                # Redis 연결 재시도
+                print("🔄 Redis 재연결 시도...")
+                await asyncio.sleep(min(consecutive_errors * 2, 30))  # 점진적 백오프 (최대 30초)
+                self.redis_client = None  # 연결 객체 초기화
+                
             except Exception as e:
-                print(f"❌ Worker 루프 오류: {e}")
+                consecutive_errors += 1
+                print(f"❌ Worker 루프 오류 ({consecutive_errors}/{max_consecutive_errors}): {e}")
                 print(traceback.format_exc())
-                await asyncio.sleep(5)  # 오류 발생 시 잠시 대기
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    print(f"❌ 연속 오류가 {max_consecutive_errors}회 발생. Worker 종료.")
+                    self.running = False
+                    break
+                
+                await asyncio.sleep(min(consecutive_errors * 2, 30))  # 점진적 백오프
         
         print("👋 Worker 종료")
+    
+    def _ensure_redis_connection(self) -> bool:
+        """Redis 연결 상태 확인 및 재연결"""
+        try:
+            if self.redis_client is None:
+                return self.connect_redis()
+                
+            # 연결 상태 확인
+            self.redis_client.ping()
+            return True
+            
+        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError, Exception):
+            print("🔄 Redis 연결이 끊어짐, 재연결 시도...")
+            self.redis_client = None
+            return self.connect_redis()
     
     def stop(self):
         """Worker 중지"""
