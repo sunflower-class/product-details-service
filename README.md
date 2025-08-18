@@ -113,14 +113,20 @@ psql -h hostname -U username -d database -f database/init.sql
 | 엔드포인트 | 메서드 | 설명 | 인증 |
 |-----------|--------|------|------|
 | `/api/generation/actuator/health` | GET | 헬스 체크 | ❌ |
-| `/api/generation/display-list` | POST | **전체 HTML 생성 플로우** | ✅ |
+| `/api/generation/display-list` | POST | **HTML 생성 요청** (비동기, 202 응답) | ✅ |
+| `/api/generation/generation/status/{task_id}` | GET | 작업 상태 조회 | ✅ |
+| `/api/generation/generation/result/{task_id}` | GET | 작업 결과 조회 | ✅ |
+| `/api/generation/product-details/{id}` | GET | 상품 상세 정보 조회 | ✅ |
+| `/api/generation/product-details/{id}` | PUT | 상품 상세 정보 업데이트 | ✅ |
+| `/api/generation/product-details/{id}` | DELETE | 상품 상세 정보 삭제 | ✅ |
+| `/api/generation/product-details` | GET | 상품 목록 조회 | ✅ |
 | `/api/generation/image` | POST | 이미지 수정/생성 | ✅ |
 | `/api/generation/upload-image` | POST | 이미지 업로드 | ✅ |
 | `/api/generation/message` | POST | Kafka 메시지 테스트 | ❌ |
 
 ### 핵심 API 사용법
 
-#### HTML 생성 (전체 플로우)
+#### 1. HTML 생성 요청 (비동기)
 
 ```bash
 curl -X POST "http://localhost:5001/api/generation/display-list" \
@@ -128,19 +134,92 @@ curl -X POST "http://localhost:5001/api/generation/display-list" \
   -H "Content-Type: application/json" \
   -d '{
     "product_data": "아이폰 15 프로 최신형 스마트폰 가격 150만원 애플 브랜드",
-    "product_image_url": "https://example.com/image.jpg"
+    "product_image_url": "https://example.com/image.jpg",
+    "features": ["고화질 카메라", "긴 배터리 수명"],
+    "target_customer": "젊은 직장인",
+    "tone": "professional"
   }'
 ```
 
-**응답 예시:**
+**응답 (202):**
 ```json
 {
-  "status": "success",
+  "status": "Message accepted for processing",
   "data": {
-    "html_list": ["<div>...</div>", "<div>...</div>"],
-    "product_details_id": 123,
-    "product_id": 456,
-    "image_count": 4
+    "html_list": []
+  },
+  "task_id": "uuid-task-id"
+}
+```
+
+#### 2. 작업 상태 조회
+
+```bash
+curl "http://localhost:5001/api/generation/generation/status/uuid-task-id" \
+  -H "X-User-Id: user123"
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "task_id": "uuid-task-id",
+  "status": "completed",
+  "created_at": "2025-01-01T00:00:00",
+  "updated_at": "2025-01-01T00:05:00"
+}
+```
+
+#### 3. 작업 결과 조회
+
+```bash
+curl "http://localhost:5001/api/generation/generation/result/uuid-task-id" \
+  -H "X-User-Id: user123"
+```
+
+#### 4. 상품 상세 정보 조회
+
+```bash
+curl "http://localhost:5001/api/generation/product-details/23" \
+  -H "X-User-Id: user123"
+```
+
+#### 5. 상품 상세 정보 업데이트
+
+```bash
+curl -X PUT "http://localhost:5001/api/generation/product-details/23" \
+  -H "X-User-Id: user123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "published",
+    "generated_html": {
+      "html_blocks": ["<div>...</div>"]
+    }
+  }'
+```
+
+#### 6. 상품 목록 조회
+
+```bash
+curl "http://localhost:5001/api/generation/product-details?status=completed&limit=10" \
+  -H "X-User-Id: user123"
+```
+
+#### 7. 상품 상세 정보 삭제
+
+```bash
+curl -X DELETE "http://localhost:5001/api/generation/product-details/23" \
+  -H "X-User-Id: user123"
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "상품 상세 정보가 삭제되었습니다 (연관 이미지 3개 포함)",
+  "data": {
+    "deleted_product_details_id": 23,
+    "deleted_image_count": 3
   }
 }
 ```

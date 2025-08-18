@@ -382,6 +382,59 @@ async def update_product_details(
                 detail=f"업데이트 중 오류 발생: {str(e)}"
             )
 
+@router.delete("/product-details/{product_details_id}", 
+              response_model=ProductDetailsResponse,
+              tags=["Products"])
+async def delete_product_details(
+    product_details_id: int,
+    user_id: str = Depends(get_user_id)
+):
+    """ProductDetails 삭제 엔드포인트 (연관된 이미지도 함께 삭제)"""
+    print(f"🗑️ 상품 상세 삭제 요청: {product_details_id} by {user_id}")
+    
+    with simple_db.get_session() as db:
+        try:
+            # ProductDetails 조회 및 권한 확인
+            product_details = db.query(ProductDetails).filter(
+                ProductDetails.id == product_details_id,
+                ProductDetails.user_id == user_id  # 본인만 삭제 가능
+            ).first()
+            
+            if not product_details:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"ProductDetails {product_details_id}를 찾을 수 없거나 삭제 권한이 없습니다"
+                )
+            
+            # 연관된 이미지 수 확인
+            image_count = db.query(ProductImage).filter(
+                ProductImage.product_details_id == product_details_id
+            ).count()
+            
+            # 삭제 실행 (CASCADE로 인해 연관된 ProductImage도 자동 삭제됨)
+            db.delete(product_details)
+            db.commit()
+            
+            print(f"✅ 상품 상세 삭제 완료: {product_details_id} (이미지 {image_count}개 포함)")
+            
+            return ProductDetailsResponse(
+                success=True,
+                message=f"상품 상세 정보가 삭제되었습니다 (연관 이미지 {image_count}개 포함)",
+                data={
+                    "deleted_product_details_id": product_details_id,
+                    "deleted_image_count": image_count
+                }
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"❌ 상품 상세 삭제 실패: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"삭제 중 오류 발생: {str(e)}"
+            )
+
 @router.post("/test/notification", tags=["Test"])
 async def test_notification_flow(
     user_id: str = Depends(get_user_id)
