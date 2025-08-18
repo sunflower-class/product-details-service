@@ -17,8 +17,8 @@ class HtmlGenerationFlow:
     
     def __init__(self):
         import os
-        # 환경 변수로 이미지 생성 수 제어 (기본값 0)
-        self.max_images = int(os.environ.get("MAX_GENERATED_IMAGES", "0"))
+        # 환경 변수로 이미지 생성 수 제어 (기본값 2로 변경 - 테스트용)
+        self.max_images = int(os.environ.get("MAX_GENERATED_IMAGES", "2"))
     
     async def generate_complete_html(
         self,
@@ -304,14 +304,16 @@ class HtmlGenerationFlow:
         )
         
         for i, prompt in enumerate(prompts[:self.max_images]):
-            print(f"🎨 이미지 {i+1} 생성 중: {prompt[:50]}...")
+            print(f"🎨 이미지 {i+1}/{len(prompts[:self.max_images])} 생성 중: {prompt[:50]}...")
             
+            # 타임아웃 60초로 이미지 생성 시도
             image_data = image_manager.generate_and_store_image(
                 product_details_id=product_details_id,
                 prompt=prompt,
                 user_id=user_id,
                 image_type='product',
-                product_id=product_id
+                product_id=product_id,
+                timeout=60  # 60초 타임아웃 설정
             )
             
             if image_data and not image_data.get('error'):
@@ -321,6 +323,12 @@ class HtmlGenerationFlow:
                 # 이미지 생성 실패 시 경고만 출력하고 계속 (전체 플로우 중단 방지)
                 error_msg = image_data.get('error', 'Unknown error') if image_data else 'No response'
                 print(f"⚠️ 이미지 {i+1} 생성 실패 (무시하고 계속): {error_msg}")
+                
+                # 타임아웃이나 API 오류 시에도 작업 계속 진행
+                if 'timeout' in error_msg.lower():
+                    print(f"⏰ 이미지 {i+1} 타임아웃으로 건너뛰고 다음 이미지로 진행")
+                elif 'api error' in error_msg.lower():
+                    print(f"🔌 이미지 {i+1} API 오류로 건너뛰고 다음 이미지로 진행")
         
         return generated_images
     

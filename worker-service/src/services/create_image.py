@@ -42,74 +42,123 @@ def translate_prompt(prompt: str) -> any:
 
 
 # size: small(256*256), default(512*512), large(1024*1024)
-def create_image(prompt: str, size: str = "default") -> any:
+def create_image(prompt: str, size: str = "default", timeout: int = 60) -> any:
     print("create_image...")
-    client = Together(
-        api_key=TOGETHER_API_KEY,
-    )
-    size_list = {
-        "small": [256, 256],
-        "default": [512, 512],
-        "large": [1024, 1024]
-    }
+    
+    import signal
+    from functools import wraps
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Image generation timed out after {timeout} seconds")
+    
+    # 타임아웃 핸들러 설정
+    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout)
+    
+    try:
+        client = Together(
+            api_key=TOGETHER_API_KEY,
+        )
+        size_list = {
+            "small": [256, 256],
+            "default": [512, 512],
+            "large": [1024, 1024]
+        }
 
-    # model_name, steps
-    models = {
-        "free": ["FLUX.1-schnell-Free", None],
-        "schnell": ["FLUX.1-schnell", 4],
-        "dev": ["FLUX.1-dev", 28],
-        "kontext-dev": ["FLUX.1-kontext-dev", 28],
-    }
+        # model_name, steps
+        models = {
+            "free": ["FLUX.1-schnell-Free", None],
+            "schnell": ["FLUX.1-schnell", 4],
+            "dev": ["FLUX.1-dev", 28],
+            "kontext-dev": ["FLUX.1-kontext-dev", 28],
+        }
 
-    model_key = "free"
+        model_key = "free"
 
-    print("prompt", prompt)
-    en_prompt = translate_prompt(prompt=prompt)
-    print("en_prompt", en_prompt)
+        print("prompt", prompt)
+        en_prompt = translate_prompt(prompt=prompt)
+        print("en_prompt", en_prompt)
+        print(f"⏰ Together AI 호출 시작 (타임아웃: {timeout}초)")
 
-    response = client.images.generate(
-        model=f"black-forest-labs/{models[model_key][0]}",
-        steps=models[model_key][1],
-        prompt=en_prompt,
-        width=size_list[size][0],
-        height=size_list[size][1]
-    )
-
-    return response
+        response = client.images.generate(
+            model=f"black-forest-labs/{models[model_key][0]}",
+            steps=models[model_key][1],
+            prompt=en_prompt,
+            width=size_list[size][0],
+            height=size_list[size][1]
+        )
+        
+        print("✅ Together AI 호출 완료")
+        return response
+        
+    except TimeoutError as e:
+        print(f"⏰ Together AI 타임아웃: {e}")
+        raise e
+    except Exception as e:
+        print(f"❌ Together AI API 오류: {e}")
+        raise e
+    finally:
+        # 타임아웃 해제
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 # size: small(256*256), default(512*512), large(1024*1024)
-def reshape_image(prompt: str, image_url: str, size: str = "default") -> any:
+def reshape_image(prompt: str, image_url: str, size: str = "default", timeout: int = 60) -> any:
     print("reshape_image...")
-    client = Together(
-        api_key=TOGETHER_API_KEY,
-    )
-    size_list = {
-        "small": [256, 256],
-        "default": [512, 512],
-        "large": [1024, 1024]
-    }
+    
+    import signal
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Image reshape timed out after {timeout} seconds")
+    
+    # 타임아웃 핸들러 설정
+    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout)
+    
+    try:
+        client = Together(
+            api_key=TOGETHER_API_KEY,
+        )
+        size_list = {
+            "small": [256, 256],
+            "default": [512, 512],
+            "large": [1024, 1024]
+        }
 
-    # model_name, steps
-    models = {
-        "kontext-dev": ["FLUX.1-kontext-dev", 28],
-    }
+        # model_name, steps
+        models = {
+            "kontext-dev": ["FLUX.1-kontext-dev", 28],
+        }
 
-    model_key = "kontext-dev"
+        model_key = "kontext-dev"
 
-    print("prompt", prompt)
-    en_prompt = translate_prompt(prompt=prompt)
-    print("en_prompt", en_prompt)
+        print("prompt", prompt)
+        en_prompt = translate_prompt(prompt=prompt)
+        print("en_prompt", en_prompt)
+        print(f"⏰ Together AI reshape 호출 시작 (타임아웃: {timeout}초)")
 
-    response = client.images.generate(
-        model=f"black-forest-labs/{models[model_key][0]}",
-        steps=models[model_key][1],
-        prompt=en_prompt,
-        width=size_list[size][0],
-        height=size_list[size][0],
-        image_url=image_url,
-    )
-
-    return response
+        response = client.images.generate(
+            model=f"black-forest-labs/{models[model_key][0]}",
+            steps=models[model_key][1],
+            prompt=en_prompt,
+            width=size_list[size][0],
+            height=size_list[size][0],
+            image_url=image_url,
+        )
+        
+        print("✅ Together AI reshape 호출 완료")
+        return response
+        
+    except TimeoutError as e:
+        print(f"⏰ Together AI reshape 타임아웃: {e}")
+        raise e
+    except Exception as e:
+        print(f"❌ Together AI reshape API 오류: {e}")
+        raise e
+    finally:
+        # 타임아웃 해제
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 import requests
 

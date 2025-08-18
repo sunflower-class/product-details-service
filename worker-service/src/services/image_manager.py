@@ -30,7 +30,8 @@ class ImageManager:
         user_id: str,
         image_type: str = 'product',
         reference_url: Optional[str] = None,
-        product_id: Optional[int] = None
+        product_id: Optional[int] = None,
+        timeout: int = 60
     ) -> Dict[str, Any]:
         """
         이미지를 생성하고 저장합니다.
@@ -41,64 +42,117 @@ class ImageManager:
             image_type: 이미지 타입 ('product', 'background', 'icon', etc.)
             reference_url: 참조 이미지 URL (reshape용)
             product_id: 실제 상품 ID (선택적)
+            timeout: API 호출 타임아웃 (초)
         
         Returns:
-            이미지 정보 딕셔너리
+            이미지 정보 딕셔너리 (에러 시 error 키 포함)
         """
         
-        # 1. 프롬프트 번역
-        translated_prompt = translate_prompt(prompt)
-        
-        # 2. 이미지 생성
-        if reference_url and prompt.startswith("product:"):
-            # 기존 상품 이미지 변형
-            clean_prompt = prompt[8:].strip()
-            response = reshape_image(clean_prompt, reference_url)
-        else:
-            # 새 이미지 생성
-            response = create_image(prompt)
-        
-        if not response or not response.data or len(response.data) == 0:
-            raise Exception("이미지 생성 API 응답 없음")
-        
-        temp_url = response.data[0].url
-        if not temp_url:
-            raise Exception("이미지 URL이 응답에 없음")
+        try:
+            print(f"🎨 이미지 생성 시작: {prompt[:50]}...")
             
-        # 3. 데이터베이스에 저장
-        with simple_db.get_session() as db:
-            image_record = ProductImage(
-                product_details_id=product_details_id,
-                product_id=product_id,
-                user_id=user_id,
-                original_prompt=prompt,
-                translated_prompt=translated_prompt,
-                temp_url=temp_url,
-                image_source='GENERATED',
-                image_type=image_type,
-                is_uploaded_to_s3=False
-            )
+            # 1. 프롬프트 번역
+            try:
+                translated_prompt = translate_prompt(prompt)
+                print(f"📝 프롬프트 번역 완료: {translated_prompt[:50]}...")
+            except Exception as e:
+                print(f"⚠️ 프롬프트 번역 실패, 원본 사용: {e}")
+                translated_prompt = prompt
             
-            db.add(image_record)
-            db.flush()  # ID 생성을 위해
+            # 2. 이미지 생성 (타임아웃 적용)
+            response = None
+            try:
+                if reference_url and prompt.startswith("product:"):
+                    # 기존 상품 이미지 변형
+                    clean_prompt = prompt[8:].strip()
+                    response = reshape_image(clean_prompt, reference_url, timeout=timeout)
+                else:
+                    # 새 이미지 생성
+                    response = create_image(prompt, timeout=timeout)
+                    
+            except TimeoutError as e:
+                print(f"⏰ 이미지 생성 타임아웃: {e}")
+                return {
+                    'error': f'Image generation timeout after {timeout}s',
+                    'prompt': prompt,
+                    'image_type': image_type
+                }
+            except Exception as e:
+                print(f"❌ 이미지 생성 API 오류: {e}")
+                return {
+                    'error': f'Image generation API error: {str(e)}',
+                    'prompt': prompt,
+                    'image_type': image_type
+                }
             
-            image_id = image_record.id
+            # 3. 응답 검증
+            if not response or not response.data or len(response.data) == 0:
+                print("❌ 이미지 생성 API 응답 없음")
+                return {
+                    'error': 'No response from image generation API',
+                    'prompt': prompt,
+                    'image_type': image_type
+                }
             
-            # 4. S3 업로드 (설정되어 있다면)
-            if self.s3_available:
-                s3_url = self._upload_to_s3(temp_url, image_id, image_type)
-                if s3_url:
-                    image_record.s3_url = s3_url
-                    image_record.is_uploaded_to_s3 = True
+            temp_url = response.data[0].url
+            if not temp_url:
+                print("❌ 이미지 URL이 응답에 없음")
+                return {
+                    'error': 'No image URL in API response',
+                    'prompt': prompt,
+                    'image_type': image_type
+                }
             
+            print(f"✅ 이미지 생성 성공: {temp_url}")
+            
+            # 4. 데이터베이스에 저장
+            with simple_db.get_session() as db:
+                image_record = ProductImage(
+                    product_details_id=product_details_id,
+                    product_id=product_id,
+                    user_id=user_id,
+                    original_prompt=prompt,
+                    translated_prompt=translated_prompt,
+                    temp_url=temp_url,
+                    image_source='GENERATED',
+                    image_type=image_type,
+                    is_uploaded_to_s3=False
+                )
+                
+                db.add(image_record)
+                db.flush()  # ID 생성을 위해
+                
+                image_id = image_record.id
+                
+                # 5. S3 업로드 (설정되어 있다면)
+                if self.s3_available:
+                    try:
+                        s3_url = self._upload_to_s3(temp_url, image_id, image_type)
+                        if s3_url:
+                            image_record.s3_url = s3_url
+                            image_record.is_uploaded_to_s3 = True
+                            print(f"☁️ S3 업로드 완료: {s3_url}")
+                        else:
+                            print(f"⚠️ S3 업로드 실패, 임시 URL 사용: {temp_url}")
+                    except Exception as e:
+                        print(f"⚠️ S3 업로드 중 오류 (임시 URL 사용): {e}")
+                
+                return {
+                    'id': image_record.id,
+                    'url': image_record.s3_url if image_record.s3_url else temp_url,
+                    'temp_url': temp_url,
+                    's3_url': image_record.s3_url,
+                    'is_uploaded_to_s3': image_record.is_uploaded_to_s3,
+                    'image_type': image_type,
+                    'prompt': prompt
+                }
+                
+        except Exception as e:
+            print(f"❌ 이미지 생성 전체 프로세스 실패: {e}")
             return {
-                'id': image_record.id,
-                'url': image_record.s3_url if image_record.s3_url else temp_url,
-                'temp_url': temp_url,
-                's3_url': image_record.s3_url,
-                'is_uploaded_to_s3': image_record.is_uploaded_to_s3,
-                'image_type': image_type,
-                'prompt': prompt
+                'error': f'Complete image generation process failed: {str(e)}',
+                'prompt': prompt,
+                'image_type': image_type
             }
     
     def _upload_to_s3(self, temp_url: str, image_id: int, image_type: str) -> Optional[str]:
