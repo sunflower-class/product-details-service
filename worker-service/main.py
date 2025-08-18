@@ -46,22 +46,31 @@ class HtmlGenerationWorker:
             else:
                 redis_url = f'redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0'
             
-            # 연결 풀 설정으로 안정성 향상
+            # Azure Redis 최적화 설정
             self.redis_client = redis.from_url(
                 redis_url, 
                 decode_responses=True, 
                 ssl_cert_reqs=None,
-                socket_connect_timeout=15,  # 연결 타임아웃 증가
-                socket_timeout=15,          # 소켓 타임아웃 증가
+                socket_connect_timeout=15,  # 연결 타임아웃
+                socket_timeout=30,          # Azure 권장: 긴 작업 대응
                 socket_keepalive=True,      # 연결 유지 활성화
-                socket_keepalive_options={},
-                health_check_interval=30,   # 30초마다 연결 상태 확인
+                socket_keepalive_options={
+                    1: 60,  # TCP_KEEPIDLE: 60초 후 keep-alive 시작
+                    2: 30,  # TCP_KEEPINTVL: 30초 간격으로 probe
+                    3: 3,   # TCP_KEEPCNT: 3번 실패하면 연결 종료
+                },
+                health_check_interval=60,   # Azure Redis 10분 idle timeout 대응
                 retry_on_timeout=True,      # 타임아웃 시 재시도
                 retry_on_error=[            # 특정 에러 시 재시도
                     redis.exceptions.ConnectionError,
                     redis.exceptions.TimeoutError,
+                    redis.exceptions.BusyLoadingError,
                 ],
-                max_connections=10          # 연결 풀 최대 크기
+                max_connections=5,          # 연결 풀 크기 (Worker는 적게)
+                connection_pool_kwargs={    # 추가 연결 풀 설정
+                    'retry_on_timeout': True,
+                    'socket_keepalive': True,
+                }
             )
             
             # 연결 테스트
@@ -138,6 +147,11 @@ class HtmlGenerationWorker:
     def update_task_status(self, task_id: str, status: str, error: Optional[str] = None):
         """작업 상태 업데이트 - Redis 연결 실패 시에도 계속 진행"""
         try:
+            # 연결 상태 확인 및 재연결
+            if not self._ensure_redis_connection():
+                print(f"⚠️ Redis 연결 실패로 상태 업데이트 건너뛰기: {task_id} -> {status}")
+                return
+                
             status_key = f"{STATUS_PREFIX}{task_id}"
             status_data = {
                 'status': status,
@@ -153,12 +167,19 @@ class HtmlGenerationWorker:
                 86400,
                 json.dumps(status_data)
             )
+            print(f"📝 상태 업데이트 성공: {task_id} -> {status}")
+            
         except Exception as e:
             print(f"⚠️ Redis 상태 업데이트 실패 (무시하고 계속): {e}")
         
     def store_result(self, task_id: str, result: Dict[str, Any]):
         """작업 결과 저장 - Redis 연결 실패 시에도 계속 진행"""
         try:
+            # 연결 상태 확인 및 재연결
+            if not self._ensure_redis_connection():
+                print(f"⚠️ Redis 연결 실패로 결과 저장 건너뛰기: {task_id}")
+                return
+                
             result_key = f"{RESULT_PREFIX}{task_id}"
             
             # 결과 저장 (24시간 TTL)
@@ -167,6 +188,8 @@ class HtmlGenerationWorker:
                 86400,
                 json.dumps(result)
             )
+            print(f"💾 결과 저장 성공: {task_id}")
+            
         except Exception as e:
             print(f"⚠️ Redis 결과 저장 실패 (무시하고 계속): {e}")
     
