@@ -6,6 +6,7 @@ import json
 import asyncio
 from typing import List, Dict, Optional, Any
 import redis.asyncio as aioredis
+from redis.exceptions import ConnectionError, TimeoutError, RedisError
 from datetime import datetime, timedelta
 
 
@@ -36,8 +37,8 @@ class RedisNotificationStore:
                 health_check_interval=60,   # Azure Redis 10분 idle timeout 대응
                 retry_on_timeout=True,      # 타임아웃 시 재시도
                 retry_on_error=[            # 특정 에러 시 재시도
-                    aioredis.exceptions.ConnectionError,
-                    aioredis.exceptions.TimeoutError,
+                    ConnectionError,
+                    TimeoutError,
                 ],
                 max_connections=10          # notification-service는 더 많은 연결 필요
             )
@@ -60,7 +61,7 @@ class RedisNotificationStore:
             await self.redis.ping()
             return True
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError, Exception) as e:
+        except (ConnectionError, TimeoutError, Exception) as e:
             print(f"🔄 Redis 연결이 끊어짐, 재연결 시도... ({e})")
             self.redis = None
             self._init_redis()
@@ -111,7 +112,7 @@ class RedisNotificationStore:
             print(f"✅ 알림 저장: {notification_id} for {user_id}")
             return True
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError) as e:
+        except (ConnectionError, TimeoutError) as e:
             print(f"❌ Redis 연결 오류로 알림 저장 실패: {e}")
             # 연결 오류 시 재연결 시도를 위해 연결 객체 초기화
             self.redis = None
@@ -151,7 +152,7 @@ class RedisNotificationStore:
             
             return notifications
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError) as e:
+        except (ConnectionError, TimeoutError) as e:
             print(f"❌ Redis 연결 오류로 알림 조회 실패: {e}")
             self.redis = None
             return []
@@ -192,7 +193,7 @@ class RedisNotificationStore:
             print(f"✅ 알림 읽음 처리: {notification_id}")
             return True
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError) as e:
+        except (ConnectionError, TimeoutError) as e:
             print(f"❌ Redis 연결 오류로 읽음 처리 실패: {e}")
             self.redis = None
             return False
@@ -229,7 +230,7 @@ class RedisNotificationStore:
             print(f"✅ 알림 삭제: {notification_id}")
             return True
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError) as e:
+        except (ConnectionError, TimeoutError) as e:
             print(f"❌ Redis 연결 오류로 알림 삭제 실패: {e}")
             self.redis = None
             return False
@@ -249,7 +250,7 @@ class RedisNotificationStore:
             unread_count = sum(1 for n in notifications if n.get('status') == 'unread')
             return unread_count
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError) as e:
+        except (ConnectionError, TimeoutError) as e:
             print(f"❌ Redis 연결 오류로 미읽음 개수 조회 실패: {e}")
             self.redis = None
             return 0
@@ -272,7 +273,7 @@ class RedisNotificationStore:
             )
             print(f"📡 실시간 알림 발송: {user_id}")
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError) as e:
+        except (ConnectionError, TimeoutError) as e:
             print(f"❌ Redis 연결 오류로 실시간 알림 발송 실패: {e}")
             self.redis = None
         except Exception as e:
@@ -291,7 +292,7 @@ class RedisNotificationStore:
             await pubsub.subscribe(channel)
             return pubsub
             
-        except (aioredis.exceptions.ConnectionError, aioredis.exceptions.TimeoutError) as e:
+        except (ConnectionError, TimeoutError) as e:
             print(f"❌ Redis 연결 오류로 알림 구독 실패: {e}")
             self.redis = None
             return None
