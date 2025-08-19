@@ -54,6 +54,7 @@ class TaskManager:
         product_data: str,
         product_image_url: str,
         user_id: str,
+        product_id: int,  # Product ID 추가
         user_session: Optional[str] = None,
         features: Optional[list] = None,
         target_customer: Optional[str] = None,
@@ -74,6 +75,7 @@ class TaskManager:
         # 작업 데이터 준비
         task_data = {
             'task_id': task_id,
+            'product_id': product_id,  # Product ID 추가
             'product_data': product_data,
             'product_image_url': product_image_url,
             'user_id': user_id,

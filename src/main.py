@@ -11,6 +11,7 @@ from confluent_kafka import Producer, Consumer, KafkaException
 
 from src.core.config import KAFKA_BROKER, TOPIC_NAME, MODE
 from src.api.endpoints import router as api_router # 분리된 라우터를 import
+from src.api.product_endpoints import router as product_router # Product CRUD 라우터 추가
 
 # --- Kafka Consumer (main.py에 유지 또는 별도 파일로 분리 가능) ---
 def consume_messages():
@@ -82,6 +83,7 @@ app = FastAPI(
 
 # --- 라우터 포함 ---
 app.include_router(api_router)
+app.include_router(product_router)  # Product CRUD 라우터 추가
 
 STATIC_DIR = "static/images"
 os.makedirs(STATIC_DIR, exist_ok=True)

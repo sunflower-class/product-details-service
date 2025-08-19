@@ -15,8 +15,7 @@ class NotificationDispatcher:
     """알림 발송 처리기"""
     
     def __init__(self):
-        # 각종 알림 채널 설정
-        self.webhook_url = os.environ.get("NOTIFICATION_WEBHOOK_URL")
+        # 개발팀용 알림 채널 설정 (선택사항)
         self.slack_webhook = os.environ.get("SLACK_WEBHOOK_URL")
         self.discord_webhook = os.environ.get("DISCORD_WEBHOOK_URL")
         
@@ -45,90 +44,47 @@ class NotificationDispatcher:
         """성공 알림 발송"""
         print(f"🎉 성공 알림 발송: {notification.title}")
         
-        # 웹훅으로 프론트엔드에 알림
-        webhook_sent = await self._send_webhook_notification(notification)
-        
-        # Redis에 알림 저장
+        # Redis에 알림 저장 (필수)
         await self._save_to_redis(notification)
         
         # 로그 저장
         if self.save_logs:
             await self._save_notification_log(notification, "sent")
         
-        return webhook_sent
+        return True
     
     async def _send_error_notification(self, notification: NotificationEvent) -> bool:
         """에러 알림 발송"""
         print(f"🚨 에러 알림 발송: {notification.title}")
         
-        # 웹훅으로 프론트엔드에 알림
-        webhook_sent = await self._send_webhook_notification(notification)
-        
-        # Slack으로도 에러 알림 (개발팀용)
+        # Slack으로 에러 알림 (개발팀용)
         if self.slack_webhook:
             await self._send_slack_notification(notification)
         
-        # Redis에 알림 저장
+        # Redis에 알림 저장 (필수)
         await self._save_to_redis(notification)
         
         # 로그 저장
         if self.save_logs:
             await self._save_notification_log(notification, "sent")
         
-        return webhook_sent
+        return True
     
     async def _send_progress_notification(self, notification: NotificationEvent) -> bool:
         """진행상황 알림 발송"""
         print(f"⏳ 진행상황 알림 발송: {notification.title}")
         
-        # 진행상황은 웹훅으로만 발송 (실시간 업데이트)
-        return await self._send_webhook_notification(notification)
+        # 진행상황 알림도 Redis에 저장 및 실시간 브로드캐스트
+        await self._save_to_redis(notification)
+        return True
     
     async def _send_general_notification(self, notification: NotificationEvent) -> bool:
         """일반 알림 발송"""
         print(f"📢 일반 알림 발송: {notification.title}")
         
-        return await self._send_webhook_notification(notification)
-    
-    async def _send_webhook_notification(self, notification: NotificationEvent) -> bool:
-        """웹훅으로 알림 발송 (프론트엔드용)"""
-        if not self.webhook_url:
-            print("⚠️ Webhook URL이 설정되지 않음")
-            return True  # 웹훅이 없어도 실패로 처리하지 않음
-        
-        try:
-            payload = {
-                "event_id": notification.event_id,
-                "service_type": notification.service_type,
-                "message_type": notification.message_type,
-                "user_id": notification.user_id,
-                "user_session": notification.user_session,
-                "title": notification.title,
-                "message": notification.message,
-                "action_url": notification.action_url,
-                "action_label": notification.action_label,
-                "data_url": notification.data_url,
-                "data_id": notification.data_id,
-                "metadata": notification.metadata,
-                "timestamp": notification.created_at.isoformat()
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.webhook_url,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        print(f"📤 웹훅 발송 성공: {notification.event_id}")
-                        return True
-                    else:
-                        print(f"❌ 웹훅 발송 실패: {response.status}")
-                        return False
-                        
-        except Exception as e:
-            print(f"❌ 웹훅 발송 중 오류: {e}")
-            return False
+        # Redis에 저장 및 실시간 브로드캐스트
+        await self._save_to_redis(notification)
+        return True
     
     async def _send_slack_notification(self, notification: NotificationEvent) -> bool:
         """Slack으로 알림 발송 (개발팀용)"""

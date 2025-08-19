@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl rollout restart:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl get:*)",
+      "Bash(kubectl exec:*)",
+      "Bash(kubectl describe:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

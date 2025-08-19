@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from src.services.product_client import product_client, parse_product_data
+# ProductService 제거 - worker는 ProductDetails만 처리
 from src.services.image_manager import image_manager
 from src.services.create_html_hybrid import generate_hybrid_html
 from src.models.models_simple import ProductDetails, ProductImage, simple_db
@@ -57,19 +57,15 @@ class HtmlGenerationFlow:
         try:
             print(f"🚀 HTML 생성 플로우 시작 - 사용자: {user_id}")
             
-            # 1. Product 서비스에 상품 생성
-            print("1️⃣ Product 서비스에 상품 생성 중...")
-            product_request = parse_product_data(product_data, user_id)
-            product_response = await product_client.create_product(product_request)
+            # 1. task_data에서 product_id 추출
+            product_id = task_data.get('product_id') if task_data else None
+            if not product_id:
+                raise Exception("Product ID가 task_data에 없습니다")
             
-            if not product_response:
-                raise Exception("Product 서비스 호출 실패")
+            print(f"📋 Product ID 확인: {product_id}")
             
-            product_id = product_response.productId
-            print(f"✅ Product 생성 완료 - ID: {product_id}")
-            
-            # 2. ProductDetails 레코드 생성 (먼저 생성해야 이미지에서 참조 가능)
-            print("2️⃣ ProductDetails 레코드 생성 중...")
+            # 2. ProductDetails 레코드 생성 (메인 서비스에서 생성된 Product ID 사용)
+            print("1️⃣ ProductDetails 레코드 생성 중...")
             with simple_db.get_session() as db:
                 # 추가 정보를 metadata에 저장
                 metadata = {
@@ -82,7 +78,7 @@ class HtmlGenerationFlow:
                 }
                 
                 product_details = ProductDetails(
-                    product_id=product_id,
+                    product_id=product_id,  # 메인 서비스에서 생성된 Product ID 사용
                     user_id=user_id,
                     user_session=user_session,
                     original_product_info=product_data,
@@ -99,7 +95,7 @@ class HtmlGenerationFlow:
                 print(f"✅ ProductDetails 생성 완료 - ID: {product_details_id}")
             
             # 3. 원본 이미지 저장 (ORIGINAL)
-            print("3️⃣ 원본 이미지 저장 중...")
+            print("2️⃣ 원본 이미지 저장 중...")
             original_image_data = await self._store_original_image(
                 product_details_id, product_image_url, user_id, product_id
             )
@@ -139,7 +135,7 @@ class HtmlGenerationFlow:
             if not html_list:
                 raise Exception("HTML 생성 실패")
             
-            # 7. ProductDetails 업데이트 (최종 HTML 저장)
+            # 7. ProductDetails 업데이트 (최종 HTML 저장 및 썸네일 설정)
             print("7️⃣ 최종 결과 저장 중...")
             with simple_db.get_session() as db:
                 product_details = db.query(ProductDetails).filter(
@@ -149,12 +145,27 @@ class HtmlGenerationFlow:
                 if not product_details:
                     raise Exception("ProductDetails 레코드를 찾을 수 없음")
                 
+                # 첫 번째 이미지를 썸네일로 설정
+                thumbnail_url = None
+                if image_urls:
+                    # S3에 업로드된 첫 번째 이미지의 URL을 썸네일로 사용
+                    first_image = db.query(ProductImage).filter(
+                        ProductImage.product_details_id == product_details_id,
+                        ProductImage.s3_url.isnot(None),
+                        ProductImage.is_uploaded_to_s3 == True
+                    ).order_by(ProductImage.created_at.asc()).first()
+                    
+                    if first_image:
+                        thumbnail_url = first_image.s3_url
+                        print(f"📸 썸네일 설정: {thumbnail_url}")
+                
                 product_details.generated_html = {
                     "html_blocks": html_list,
                     "image_count": len(image_urls),
                     "generation_completed": True
                 }
                 product_details.status = 'completed'
+                product_details.thumbnail = thumbnail_url
             
             print("✅ HTML 생성 플로우 완료!")
             

@@ -4,7 +4,7 @@ Simplified SQLAlchemy Models for Template System
 """
 from sqlalchemy import (
     Column, Integer, String, Text, Boolean, DateTime, 
-    ForeignKey, CheckConstraint, Index, Table, BigInteger
+    ForeignKey, CheckConstraint, Index, Table, BigInteger, DECIMAL
 )
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
@@ -154,12 +154,93 @@ class TemplateUsageLog(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
+class Product(Base):
+    """상품 정보 (기본 상품 데이터)"""
+    __tablename__ = 'products'
+    
+    id = Column(Integer, primary_key=True)
+    
+    # 기본 상품 정보
+    name = Column(String(200), nullable=False)
+    description = Column(Text)
+    category = Column(String(100))
+    brand = Column(String(100))
+    price = Column(DECIMAL(10, 2))
+    currency = Column(String(3), default='KRW')
+    
+    # 프론트엔드 원본 데이터
+    original_product_data = Column(Text, nullable=False)
+    main_image_url = Column(String(500))
+    
+    # 추가 마케팅 정보
+    features = Column(JSONB)
+    target_customer = Column(String(200))
+    tone = Column(String(50))
+    
+    # 상품 상태 및 메타데이터
+    status = Column(String(20), default='active')
+    is_published = Column(Boolean, default=False)
+    view_count = Column(Integer, default=0)
+    
+    # 사용자 정보
+    user_id = Column(String(100), nullable=False)
+    user_session = Column(String(100))
+    
+    # 타임스탬프
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    published_at = Column(DateTime)
+    
+    # Relationships - 1:N with ProductDetails
+    product_details = relationship("ProductDetails", back_populates="product", cascade="all, delete-orphan")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_products_user_id', 'user_id'),
+        Index('idx_products_category', 'category'),
+        Index('idx_products_brand', 'brand'),
+        Index('idx_products_status', 'status'),
+        Index('idx_products_published', 'is_published'),
+        Index('idx_products_created_at', 'created_at'),
+        Index('idx_products_price', 'price'),
+        CheckConstraint('price >= 0', name='chk_price_positive'),
+        CheckConstraint('view_count >= 0', name='chk_view_count_positive'),
+        CheckConstraint("status IN ('active', 'inactive', 'discontinued')", name='chk_status_valid'),
+    )
+    
+    def __repr__(self):
+        return f"<Product(id={self.id}, name='{self.name}', status='{self.status}')>"
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'category': self.category,
+            'brand': self.brand,
+            'price': float(self.price) if self.price else None,
+            'currency': self.currency,
+            'original_product_data': self.original_product_data,
+            'main_image_url': self.main_image_url,
+            'features': self.features,
+            'target_customer': self.target_customer,
+            'tone': self.tone,
+            'status': self.status,
+            'is_published': self.is_published,
+            'view_count': self.view_count,
+            'user_id': self.user_id,
+            'user_session': self.user_session,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'published_at': self.published_at.isoformat() if self.published_at else None
+        }
+
 class ProductDetails(Base):
     """생성된 상품 상세페이지"""
     __tablename__ = 'product_details'
     
     id = Column(Integer, primary_key=True)
-    product_id = Column(Integer)  # 실제 상품 ID (나중에 연결)
+    product_id = Column(Integer, ForeignKey('products.id', ondelete='CASCADE'))  # products 테이블과 연결
     user_id = Column(String(100), nullable=False)  # 헤더 X-User-Id
     user_session = Column(String(100))  # 세션 ID (추가 정보)
     original_product_info = Column(Text, nullable=False)
@@ -171,6 +252,7 @@ class ProductDetails(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
+    product = relationship("Product", back_populates="product_details")
     product_images = relationship("ProductImage", back_populates="product_details", cascade="all, delete-orphan")
     
     # Indexes

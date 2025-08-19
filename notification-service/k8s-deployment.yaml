@@ -68,13 +68,7 @@ spec:
               name: worker-service-secret
               key: redis-ssl
         
-        # 알림 발송 설정
-        - name: NOTIFICATION_WEBHOOK_URL
-          valueFrom:
-            secretKeyRef:
-              name: notification-service-secret
-              key: webhook-url
-              optional: true
+        # 알림 발송 설정 (개발팀용)
         - name: SLACK_WEBHOOK_URL
           valueFrom:
             secretKeyRef:

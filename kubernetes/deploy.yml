@@ -83,9 +83,9 @@ spec:
               key: redis-password
         - name: REDIS_SSL
           value: "true"  # Azure Redis는 SSL 필수
-        # Product Service URL
-        - name: PRODUCT_SERVICE_URL
-          value: "http://product-service.sangsangplus-backend.svc.cluster.local:8000"
+        # Product Service URL (더 이상 사용 안함 - 내부 DB 사용)
+        # - name: PRODUCT_SERVICE_URL
+        #   value: "http://product-service.sangsangplus-backend.svc.cluster.local:8000"
         resources:
           requests:
             memory: "256Mi"

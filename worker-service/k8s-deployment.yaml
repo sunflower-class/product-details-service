@@ -98,12 +98,12 @@ spec:
         - name: NOTIFICATION_EVENTHUB_NAME
           value: "notification"
         
-        # Product Service 설정
-        - name: PRODUCT_SERVICE_URL
-          valueFrom:
-            secretKeyRef:
-              name: worker-service-secret
-              key: product-service-url
+        # Product Service 설정 (더 이상 사용 안함 - 내부 DB 사용)
+        # - name: PRODUCT_SERVICE_URL
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: worker-service-secret
+        #       key: product-service-url
         
         # Product Details Service 설정 (알림에서 사용할 외부 URL)
         - name: PRODUCT_DETAILS_SERVICE_URL

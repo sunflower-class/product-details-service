@@ -7,10 +7,10 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from src.services.product_client import product_client, parse_product_data
+from src.services.product_service import ProductService
 from src.services.image_manager import image_manager
 from src.services.create_html_hybrid import generate_hybrid_html
-from src.models.models_simple import ProductDetails, ProductImage, simple_db
+from src.models.models_simple import ProductDetails, ProductImage, Product, simple_db
 
 class HtmlGenerationFlow:
     """HTML 생성 전체 플로우 관리"""
@@ -43,15 +43,19 @@ class HtmlGenerationFlow:
         try:
             print(f"🚀 HTML 생성 플로우 시작 - 사용자: {user_id}")
             
-            # 1. Product 서비스에 상품 생성
-            print("1️⃣ Product 서비스에 상품 생성 중...")
-            product_request = parse_product_data(product_data, user_id)
-            product_response = await product_client.create_product(product_request)
+            # 1. 내부 Product 모델에 상품 생성
+            print("1️⃣ Product 데이터베이스에 상품 생성 중...")
+            product_create_data = self._parse_product_data(product_data, product_image_url)
+            product = ProductService.create_product(
+                product_data=product_create_data,
+                user_id=user_id,
+                user_session=user_session
+            )
             
-            if not product_response:
-                raise Exception("Product 서비스 호출 실패")
+            if not product:
+                raise Exception("Product 생성 실패")
             
-            product_id = product_response.productId
+            product_id = product.id
             print(f"✅ Product 생성 완료 - ID: {product_id}")
             
             # 2. ProductDetails 레코드 생성 (먼저 생성해야 이미지에서 참조 가능)
@@ -259,6 +263,74 @@ class HtmlGenerationFlow:
                 base_prompts.append(f"Product with {keyword}: professional photography")
         
         return base_prompts[:self.max_images]
+    
+    def _parse_product_data(self, product_data_str: str, product_image_url: str) -> Dict[str, Any]:
+        """
+        ProductInfo의 product_data 문자열을 파싱하여 Product 생성용 데이터로 변환
+        
+        Args:
+            product_data_str: 사용자가 입력한 상품 정보 문자열
+            product_image_url: 원본 상품 이미지 URL
+            
+        Returns:
+            파싱된 상품 생성 데이터
+        """
+        # 간단한 텍스트 파싱 로직
+        lines = product_data_str.strip().split('\n')
+        
+        # 기본값
+        name = "상품명 없음"
+        description = product_data_str.strip()
+        category = None
+        price = None
+        brand = None
+        
+        # 간단한 키워드 기반 파싱
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # 첫 번째 줄을 상품명으로 사용 (길이 제한)
+            if name == "상품명 없음" and len(line) < 100:
+                name = line
+            
+            # 가격 정보 추출
+            if any(keyword in line.lower() for keyword in ['price', '가격', '원', '$', '₩']):
+                import re
+                price_match = re.search(r'[\d,]+', line.replace(',', ''))
+                if price_match:
+                    try:
+                        price = float(price_match.group().replace(',', ''))
+                    except:
+                        pass
+            
+            # 브랜드 정보 추출
+            if any(keyword in line.lower() for keyword in ['brand', '브랜드', 'maker', '제조사']):
+                brand_part = line.split(':')[-1].strip() if ':' in line else line
+                if len(brand_part) < 50:
+                    brand = brand_part
+            
+            # 카테고리 정보 추출
+            if any(keyword in line.lower() for keyword in ['category', '카테고리', 'type', '종류']):
+                category_part = line.split(':')[-1].strip() if ':' in line else line
+                if len(category_part) < 50:
+                    category = category_part
+        
+        return {
+            'name': name,
+            'description': description,
+            'category': category if category else "기타",
+            'price': price if price else 0,
+            'brand': brand,
+            'status': 'ACTIVE',
+            'source': 'DETAIL_SERVICE',
+            'metadata': {
+                'original_input': product_data_str,
+                'original_image_url': product_image_url,
+                'parsed_at': datetime.now().isoformat()
+            }
+        }
     
     def _generate_html_with_images(self, product_data: str, image_urls: List[str]) -> List[str]:
         """이미지 URL들을 포함하여 HTML 생성"""

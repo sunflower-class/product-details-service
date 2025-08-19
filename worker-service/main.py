@@ -54,11 +54,6 @@ class HtmlGenerationWorker:
                 socket_connect_timeout=15,  # 연결 타임아웃
                 socket_timeout=30,          # Azure 권장: 긴 작업 대응
                 socket_keepalive=True,      # 연결 유지 활성화
-                socket_keepalive_options={
-                    1: 60,  # TCP_KEEPIDLE: 60초 후 keep-alive 시작
-                    2: 30,  # TCP_KEEPINTVL: 30초 간격으로 probe
-                    3: 3,   # TCP_KEEPCNT: 3번 실패하면 연결 종료
-                },
                 health_check_interval=60,   # Azure Redis 10분 idle timeout 대응
                 retry_on_timeout=True,      # 타임아웃 시 재시도
                 retry_on_error=[            # 특정 에러 시 재시도
@@ -66,11 +61,7 @@ class HtmlGenerationWorker:
                     redis.exceptions.TimeoutError,
                     redis.exceptions.BusyLoadingError,
                 ],
-                max_connections=5,          # 연결 풀 크기 (Worker는 적게)
-                connection_pool_kwargs={    # 추가 연결 풀 설정
-                    'retry_on_timeout': True,
-                    'socket_keepalive': True,
-                }
+                max_connections=5          # 연결 풀 크기 (Worker는 적게)
             )
             
             # 연결 테스트

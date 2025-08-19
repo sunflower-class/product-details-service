@@ -84,19 +84,55 @@ async def generate_html_codes(
     
     print(f"📝 사용자 {user_id} HTML 생성 요청")
     
-    # Redis 큐에 작업 제출 (Worker 서비스가 처리)
-    # 이미지 URL이 없으면 기본 플레이스홀더 사용 (DNS 이슈 방지)
-    image_url = info.product_image_url.strip() if info.product_image_url else "https://placehold.co/400x300/png?text=Product+Image"
+    # 1. 먼저 Product를 생성
+    from src.services.product_service import ProductService
     
-    result = task_manager.submit_task(
-        product_data=info.product_data.strip(),
-        product_image_url=image_url,
-        user_id=user_id,
-        user_session=request.headers.get("X-Session-Id"),
-        features=info.features,
-        target_customer=info.target_customer,
-        tone=info.tone
-    )
+    try:
+        # 이미지 URL이 없으면 기본 플레이스홀더 사용 (DNS 이슈 방지)
+        image_url = info.product_image_url.strip() if info.product_image_url else "https://placehold.co/400x300/png?text=Product+Image"
+        
+        # Product 데이터 파싱 및 생성
+        product_create_data = {
+            'name': info.product_data.split('\n')[0] if info.product_data else "상품명 없음",  # 첫 줄을 상품명으로
+            'description': info.product_data.strip(),
+            'original_product_data': info.product_data.strip(),
+            'main_image_url': image_url,
+            'features': info.features,
+            'target_customer': info.target_customer,
+            'tone': info.tone,
+            'status': 'active'
+        }
+        
+        product = ProductService.create_product(
+            product_data=product_create_data,
+            user_id=user_id,
+            user_session=request.headers.get("X-Session-Id")
+        )
+        
+        if not product:
+            raise Exception("Product 생성 실패")
+        
+        print(f"✅ Product 생성 완료 - ID: {product.id}")
+        
+        # 2. Redis 큐에 작업 제출 (Worker 서비스가 처리)
+        result = task_manager.submit_task(
+            product_data=info.product_data.strip(),
+            product_image_url=image_url,
+            user_id=user_id,
+            product_id=product.id,  # Product ID 전달
+            user_session=request.headers.get("X-Session-Id"),
+            features=info.features,
+            target_customer=info.target_customer,
+            tone=info.tone
+        )
+        
+    except Exception as e:
+        print(f"❌ Product 생성 실패: {e}")
+        # Product 생성 실패 시 에러 응답
+        return handle_kafka_production(producer, {
+            "html_list": [],
+            "error": f"Product 생성 실패: {str(e)}"
+        })
     
     producer = request.app.state.producer
     

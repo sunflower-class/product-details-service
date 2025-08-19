@@ -10,8 +10,8 @@ REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", None)
 REDIS_SSL = os.environ.get("REDIS_SSL", "false").lower() == "true"
 REDIS_DB = int(os.environ.get("REDIS_DB", 0))
 
-# --- Product Service 설정 ---
-PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL", "http://localhost:8001")
+# --- Product Service 설정 (더 이상 사용 안함 - 내부 DB 사용) ---
+# PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL", "http://localhost:8001")
 
 # --- AWS S3 설정 ---
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
@@ -33,7 +33,7 @@ TASK_TIMEOUT = int(os.environ.get("TASK_TIMEOUT", 300))  # 5분
 print(f"Worker Service Configuration:")
 print(f"  Mode: {MODE}")
 print(f"  Redis: {REDIS_HOST}:{REDIS_PORT} (SSL: {REDIS_SSL})")
-print(f"  Product Service: {PRODUCT_SERVICE_URL}")
+# print(f"  Product Service: {PRODUCT_SERVICE_URL}")  # 더 이상 외부 Product 서비스 사용 안함
 print(f"  S3 Bucket: {S3_BUCKET_NAME}")
 print(f"  Worker Concurrency: {WORKER_CONCURRENCY}")
 
@@ -45,7 +45,7 @@ class Settings:
     REDIS_PASSWORD = REDIS_PASSWORD
     REDIS_SSL = REDIS_SSL
     REDIS_DB = REDIS_DB
-    PRODUCT_SERVICE_URL = PRODUCT_SERVICE_URL
+    # PRODUCT_SERVICE_URL = PRODUCT_SERVICE_URL  # 더 이상 사용 안함
     DATABASE_URL = DATABASE_URL
 
 settings = Settings()
