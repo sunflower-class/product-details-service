@@ -42,6 +42,9 @@ class ProductService:
             db.add(product)
             db.flush()  # ID 생성을 위해 flush
             db.refresh(product)
+            
+            # 세션에서 분리하여 반환 (DetachedInstanceError 방지)
+            db.expunge(product)
             return product
 
     @staticmethod
