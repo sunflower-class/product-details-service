@@ -248,6 +248,7 @@ class ProductDetails(Base):
     used_templates = Column(ARRAY(Integer))  # 사용된 템플릿 ID들
     used_categories = Column(ARRAY(Integer))  # 사용된 카테고리 ID들
     status = Column(String(20), default='draft')  # 'draft', 'published', 'archived'
+    thumbnail = Column(String(500))  # 첫 번째 S3 이미지 URL
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -276,6 +277,7 @@ class ProductDetails(Base):
             'used_templates': self.used_templates,
             'used_categories': self.used_categories,
             'status': self.status,
+            'thumbnail': self.thumbnail,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
