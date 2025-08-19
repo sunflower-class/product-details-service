@@ -87,6 +87,8 @@ async def generate_html_codes(
     # 1. 먼저 Product를 생성
     from src.services.product_service import ProductService
     
+    producer = request.app.state.producer
+    
     try:
         # 이미지 URL이 없으면 기본 플레이스홀더 사용 (DNS 이슈 방지)
         image_url = info.product_image_url.strip() if info.product_image_url else "https://placehold.co/400x300/png?text=Product+Image"
@@ -133,8 +135,6 @@ async def generate_html_codes(
             "html_list": [],
             "error": f"Product 생성 실패: {str(e)}"
         })
-    
-    producer = request.app.state.producer
     
     if result["success"]:
         print(f"✅ 작업 제출 완료: {result['task_id']}")
