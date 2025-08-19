@@ -10,6 +10,8 @@ from datetime import datetime
 # ProductService 제거 - worker는 ProductDetails만 처리
 from src.services.image_manager import image_manager
 from src.services.create_html_hybrid import generate_hybrid_html
+from src.services.create_html_advanced import generate_advanced_html
+from src.services.template_recommendation_service import template_recommender
 from src.models.models_simple import ProductDetails, ProductImage, simple_db
 
 class HtmlGenerationFlow:
@@ -125,11 +127,22 @@ class HtmlGenerationFlow:
             if not image_urls:
                 raise Exception("사용 가능한 이미지 URL 없음")
             
-            # 6. HTML 생성 (이미지 URL들 포함)
-            print("6️⃣ HTML 생성 중...")
+            # 6. 템플릿 추천 (ChromaDB 유사도 검색)
+            print("6️⃣ 참고 템플릿 추천 중...")
+            reference_templates = template_recommender.get_templates_by_product_info(
+                product_data=product_data,
+                target_customer=target_customer,
+                tone=tone,
+                features=features,
+                n_results=3  # GPT 참고용 3개 템플릿
+            )
+            
+            # 7. HTML 생성 (이미지 URL들 + 추천 템플릿 포함)
+            print("7️⃣ HTML 생성 중...")
             html_list = self._generate_html_with_images(
                 product_data, image_urls, features=features, 
-                target_customer=target_customer, tone=tone
+                target_customer=target_customer, tone=tone,
+                reference_templates=reference_templates  # 추천 템플릿 전달
             )
             
             if not html_list:
@@ -416,7 +429,8 @@ class HtmlGenerationFlow:
         image_urls: List[str],
         features: Optional[List[str]] = None,
         target_customer: Optional[str] = None,
-        tone: Optional[str] = None
+        tone: Optional[str] = None,
+        reference_templates: Optional[List[Dict[str, Any]]] = None
     ) -> List[str]:
         """이미지 URL들을 포함하여 HTML 생성 (추가 정보 활용)"""
         
@@ -429,8 +443,30 @@ class HtmlGenerationFlow:
                 product_data, features, target_customer, tone
             )
             
-            # 하이브리드 HTML 생성 (보강된 데이터 사용)
-            html_list = generate_hybrid_html(enhanced_product_data, primary_image)
+            # ChromaDB 연결 가능 시 고급 방식 사용, 아니면 기존 방식
+            if template_recommender.health_check():
+                # 고급 방식: 상품 분석 → 블록별 콘셉트 → ChromaDB 매칭 → 구조 보존 생성 (최우선)
+                print("🎯 고급 HTML 생성 모드 사용")
+                html_list = generate_advanced_html(enhanced_product_data, primary_image)
+                
+                # 고급 방식 실패 시 기존 방식으로 폴백
+                if not html_list:
+                    print("⚠️ 고급 방식 실패, 기존 방식으로 폴백")
+                    html_list = generate_hybrid_html(
+                        enhanced_product_data, 
+                        primary_image, 
+                        reference_templates=reference_templates
+                    )
+                else:
+                    print(f"✅ 고급 방식으로 {len(html_list)}개 블록 생성 완료")
+            else:
+                print("⚠️ ChromaDB 연결 불가, 기존 방식 사용")
+                # 기존 방식: 하이브리드 HTML 생성 (보강된 데이터 + 참고 템플릿 사용)
+                html_list = generate_hybrid_html(
+                    enhanced_product_data, 
+                    primary_image, 
+                    reference_templates=reference_templates
+                )
             
             # 특징 하이라이트 HTML 추가
             if features:

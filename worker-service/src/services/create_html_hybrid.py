@@ -189,7 +189,7 @@ class ProductContent(BaseModel):
     features: List[FeatureItem] = Field(description="특징 리스트 (2-6개)")
     specifications: List[SpecificationItem] = Field(description="사양 리스트")
 
-def generate_structured_content(product_info: str) -> ProductContent:
+def generate_structured_content(product_info: str, reference_templates: List[Dict[str, Any]] = None) -> ProductContent:
     """상품 정보에서 구조화된 콘텐츠를 추출합니다."""
     
     llm = ChatOpenAI(
@@ -200,17 +200,45 @@ def generate_structured_content(product_info: str) -> ProductContent:
     
     structured_llm = llm.with_structured_output(ProductContent)
     
-    system_prompt = """
-    당신은 상품 정보를 분석하여 구조화된 데이터를 추출하는 전문가입니다.
-    제공된 상품 정보에서 다음을 추출하세요:
+    # 참고 템플릿이 있으면 실제 HTML 템플릿을 최우선으로 사용
+    template_reference = ""
+    if reference_templates:
+        template_reference = "\n\n=== 🎯 우선 참고할 HTML 템플릿 예시 (이 스타일을 최대한 따라하세요!) ===\n"
+        for i, template in enumerate(reference_templates[:2], 1):
+            template_reference += f"\n--- 템플릿 {i} ---\n"
+            template_reference += f"스타일 설명: {template.get('concept_style', '')}\n"
+            template_reference += f"HTML 구조:\n{template.get('template_html', '')[:800]}...\n"  # 첫 800자만
+        template_reference += "\n⚠️ 위 템플릿들의 디자인 패턴과 구조를 최대한 활용하여 새로운 상품에 맞게 변형해주세요!\n"
     
-    1. 매력적인 제품 타이틀과 설명
-    2. 제품과 어울리는 색상 테마
-    3. 주요 특징 (2-6개)
-    4. 제품 사양 정보
-    
-    모든 내용은 한국어로 작성하고, 마케팅 관점에서 매력적으로 작성하세요.
-    """
+    # 템플릿이 있으면 템플릿 우선 프롬프트, 없으면 기본 프롬프트
+    if reference_templates:
+        system_prompt = f"""
+        당신은 제공된 HTML 템플릿을 참고하여 새로운 상품에 맞는 구조화된 데이터를 추출하는 전문가입니다.
+        
+        🎯 **중요**: 아래 제공된 템플릿의 디자인 패턴, 색상 스타일, 레이아웃 구조를 최대한 따라해주세요!
+        
+        상품 정보에서 다음을 추출하세요:
+        1. 매력적인 제품 타이틀과 설명 (템플릿 스타일 참고)
+        2. 템플릿의 색상 테마와 유사한 색상 선택
+        3. 템플릿 구조를 참고한 주요 특징 (2-6개)
+        4. 제품 사양 정보
+        
+        모든 내용은 한국어로 작성하고, 제공된 템플릿의 톤앤매너와 스타일을 최대한 반영하세요.
+        {template_reference}
+        """
+    else:
+        system_prompt = f"""
+        당신은 상품 정보를 분석하여 구조화된 데이터를 추출하는 전문가입니다.
+        제공된 상품 정보에서 다음을 추출하세요:
+        
+        1. 매력적인 제품 타이틀과 설명
+        2. 제품과 어울리는 색상 테마
+        3. 주요 특징 (2-6개)
+        4. 제품 사양 정보
+        
+        모든 내용은 한국어로 작성하고, 마케팅 관점에서 매력적으로 작성하세요.
+        {template_reference}
+        """
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
@@ -220,6 +248,53 @@ def generate_structured_content(product_info: str) -> ProductContent:
     chain = prompt | structured_llm
     
     return chain.invoke({"product_info": product_info})
+
+def generate_template_based_html(
+    product_info: str,
+    product_image_url: str,
+    reference_templates: List[Dict[str, Any]]
+) -> str:
+    """
+    ChromaDB 추천 템플릿을 기반으로 직접 HTML 생성 (최우선 모드)
+    """
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.3,
+        api_key=OPENAI_API_KEY
+    )
+    
+    # 참고 템플릿들을 프롬프트에 포함
+    template_examples = ""
+    for i, template in enumerate(reference_templates[:2], 1):
+        template_examples += f"\n=== 참고 템플릿 {i} ===\n"
+        template_examples += f"디자인 컨셉: {template.get('concept_style', '')}\n"
+        template_examples += f"HTML 구조:\n{template.get('template_html', '')}\n\n"
+    
+    system_prompt = f"""
+    당신은 HTML 템플릿을 참고하여 새로운 상품의 상세페이지 HTML을 생성하는 전문가입니다.
+    
+    🎯 **핵심 지시사항**:
+    1. 아래 제공된 템플릿의 디자인 패턴, 구조, 스타일을 최대한 따라해주세요
+    2. 색상, 폰트, 레이아웃, HTML 클래스명 등을 유사하게 적용하세요
+    3. 새로운 상품 정보에 맞게 내용만 변경하고, 구조는 템플릿과 유사하게 유지하세요
+    4. 완전한 HTML 페이지를 생성해주세요 (여러 섹션으로 구성)
+    
+    {template_examples}
+    
+    위 템플릿들의 스타일과 구조를 참고하여 새로운 상품의 HTML을 생성해주세요.
+    """
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", f"상품 정보: {product_info}\n이미지 URL: {product_image_url}\n\n위 상품 정보를 바탕으로 참고 템플릿과 유사한 구조의 완전한 HTML 상세페이지를 생성해주세요.")
+    ])
+    
+    chain = prompt | llm | StrOutputParser()
+    
+    return chain.invoke({
+        "product_info": product_info,
+        "product_image_url": product_image_url
+    })
 
 def build_html_from_content(content: ProductContent) -> str:
     """구조화된 콘텐츠를 안정적인 HTML로 변환합니다."""
@@ -274,7 +349,8 @@ def build_html_from_content(content: ProductContent) -> str:
 
 def generate_hybrid_html(
     product_info: str,
-    product_image_url: str
+    product_image_url: str,
+    reference_templates: List[Dict[str, Any]] = None
 ) -> List[str]:
     """
     하이브리드 방식으로 안정적인 HTML을 생성합니다.
@@ -297,11 +373,17 @@ def generate_hybrid_html(
         print("⚠️ 이미지 URL이 제공되지 않았습니다.")
     
     try:
-        # 1. GPT로 구조화된 콘텐츠 생성
-        content = generate_structured_content(product_info)
-        
-        # 2. 안정적인 템플릿에 콘텐츠 삽입
-        html = build_html_from_content(content)
+        # 템플릿이 있으면 템플릿 기반 직접 HTML 생성, 없으면 기존 방식
+        if reference_templates and len(reference_templates) > 0:
+            print(f"📚 {len(reference_templates)}개의 참조 템플릿을 사용하여 HTML 생성")
+            # 1. 템플릿 기반 직접 HTML 생성 (최우선)
+            html = generate_template_based_html(product_info, product_image_url, reference_templates)
+        else:
+            print("⚠️ 참조 템플릿이 없음, 기본 구조화 방식으로 HTML 생성")
+            # 2. 기존 방식: 구조화된 콘텐츠 생성 후 템플릿 적용
+            # reference_templates를 None으로 전달하여 안전하게 처리
+            content = generate_structured_content(product_info, None)
+            html = build_html_from_content(content)
         
         # 3. 섹션별로 분리하여 반환 (기존 API와 호환)
         sections = html.split('<div class="product-section')
