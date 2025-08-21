@@ -61,7 +61,7 @@ def create_image(prompt: str, size: str = "default") -> any:
         "kontext-dev": ["FLUX.1-kontext-dev", 28],
     }
 
-    model_key = "free"
+    model_key = "schnell"
 
     print("prompt", prompt)
     en_prompt = translate_prompt(prompt=prompt)
