@@ -156,9 +156,10 @@ def get_concept_html_template(product_page: ProductPage) -> any:
             n_results=3
         )
 
+        print('result:', search_results['distances'])
         distances = search_results['distances'][0]
         templates = [x['template'] for x in search_results['metadatas'][0]]
-        
+
         results.append({ 
             "template": [{ "distance": distances[i], "html": templates[i] } for i, _ in enumerate(distances)],
             "content": block.content
