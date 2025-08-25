@@ -45,21 +45,35 @@ User Request → product-details-service → Redis Queue → worker-service → 
 - 상품 정보, 특징, 타겟 고객, 톤에 기반한 검색
 - 거리 임계값 1.5 (관대한 설정)
 
-#### 3.4 HTML 생성 방식 (2가지)
+#### 3.4 HTML 생성 방식 (2가지) - 3단계 품질 보장
 
 **A. 고급 방식** (`generate_advanced_html`) - 우선 시도
 - ChromaDB 연결 시 사용
-- 상품 분석 → 블록별 콘셉트 → 템플릿 매칭 → HTML 생성
-- **개선사항**:
-  - 추가 이미지 URL들을 갤러리로 포함
-  - 템플릿 구조 보존하되 텍스트는 상품 정보로 교체
+- 상품 분석 → 블록별 콘셉트 → 템플릿 매칭 → 3단계 HTML 생성
+
+**고급 방식 3단계 처리**:
+1. **초기 HTML 생성** (`create_html_block`):
+   - 강화된 프롬프트로 템플릿 구조 보존 + 완전한 텍스트 교체
+   - S3 이미지 URL 사전 필터링 후 전달
+   - 템플릿 예시 텍스트 완전 금지 ("PREMIUM PRODUCT" 등)
+
+2. **HTML 검증 및 재생성** (`validate_and_fix_html`):
+   - 관련없는 정보 자동 제거
+   - 누락된 중요 정보 자동 추가
+   - 이미지 URL 적용 보장
+
+3. **최종 이미지 URL 검증** (`_validate_image_urls_in_html`):
+   - regex로 잘못된 이미지 URL 탐지
+   - placeholder URL 자동 교체 (S3 URL로)
+   - 부적절한 img 태그 완전 제거
 
 **B. 하이브리드 방식** (`generate_hybrid_html`) - 폴백
 - ChromaDB 연결 실패 시 또는 고급 방식 실패 시 사용
+- 동일한 강화된 프롬프트 시스템 적용
 - **개선사항**:
-  - 템플릿의 디자인 스타일만 참고, 텍스트는 상품 정보로 교체
-  - 추가 이미지 URL들을 HTML에 포함
-  - "PREMIUM PRODUCT" 등 템플릿 텍스트 복사 금지
+  - S3 이미지 URL 사전 필터링
+  - 템플릿 텍스트 완전 교체 보장
+  - 3단계 검증 없이 단일 생성 방식
 
 #### 3.5 결과 저장
 - ProductDetails 테이블에 HTML 저장
