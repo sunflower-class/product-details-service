@@ -285,38 +285,62 @@ def create_html_block(
     try:
         enhancer_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, api_key=OPENAI_API_KEY)
 
-        # 추가 이미지 URL 정보 포함
-        image_info = ""
+        # 허용된 이미지 URL들만 필터링 후 정보 포함
+        valid_image_urls = []
         if additional_image_urls:
-            image_info = f"\n\n**사용 가능한 이미지 URL들**:\n" + "\n".join([f"- {url}" for url in additional_image_urls])
+            for url in additional_image_urls:
+                if any(domain in url for domain in ['.s3.', 'amazonaws.com', 'blob.core.windows.net']):
+                    valid_image_urls.append(url)
+                elif url.startswith('https://') and not any(blocked in url for blocked in ['placehold', 'placeholder', 'example.com']):
+                    valid_image_urls.append(url)
+        
+        image_info = ""
+        if valid_image_urls:
+            image_info = f"\n\n**허용된 이미지 URL들 (반드시 이것만 사용)**:\n" + "\n".join([f"- {url}" for url in valid_image_urls])
 
         system_prompt = f"""
-        당신은 숙련된 HTML 템플릿 편집 전문가입니다. 주어진 HTML 템플릿의 **기존 구조와 레이아웃 스타일은 절대 변경하지 않으면서**, 새로 제공되는 데이터에 맞게 **문구, 이미지 프롬프트, 색상, 테마**와 같은 지정된 요소만을 정밀하게 수정하여 최종 HTML 코드를 생성하는 것입니다.
+        당신은 숙련된 HTML 템플릿 편집 전문가입니다. 주어진 HTML 템플릿의 **기존 구조와 레이아웃 스타일은 절대 변경하지 않으면서**, 새로 제공되는 실제 상품 데이터로 내용을 완전히 교체하여 최종 HTML 코드를 생성하는 것입니다.
 
         ### **핵심 가이드 원칙**
-        1. **구조 보존의 원칙:** 원본 템플릿의 HTML 태그 구조, CSS 클래스 및 ID, 레이아웃을 정의하는 핵심 스타일을 **절대 변경하지 않습니다**.
-        2. **데이터 중심의 수정:** 주어진 상품 정보에 맞게 텍스트를 교체하고, 제공된 실제 이미지 URL을 사용하세요.
-        3. **템플릿 텍스트 교체:** "PREMIUM PRODUCT", "EXCEPTIONAL QUALITY" 등의 템플릿 예시는 실제 상품 정보로 교체하세요.
-        4. **이미지 URL 적용:** 제공된 실제 이미지 URL들을 img 태그에 사용하세요.
+        1. **구조 보존의 원칙:** HTML 태그 구조, CSS 클래스/ID, 레이아웃 스타일을 **절대 변경하지 않습니다**.
+        2. **완전한 텍스트 교체:** 템플릿의 모든 텍스트를 실제 상품 정보로 교체하세요. 템플릿 예시를 절대 그대로 두지 마세요.
+        3. **실제 이미지만 사용:** 오직 제공된 허용된 이미지 URL만 사용하고, 모든 img 태그에 적용하세요.
+        4. **상품명 정확 추출:** 상품 정보에서 실제 상품명을 찾아서 제목에 사용하세요.
+        5. **관련없는 정보 금지:** 다른 상품이나 브랜드 정보는 절대 포함하지 마세요.
 
-        ### **주의사항**
-        * 최종 결과물은 완성된 **HTML 코드**만 출력하세요.
-        * 템플릿의 구조와 스타일은 유지하되, 내용은 실제 상품 정보로 교체하세요.
-        * placeholder나 예시 이미지 URL은 사용하지 마세요.
+        ### **절대 금지사항**
+        ❌ 템플릿 예시 텍스트 그대로 사용 ("PREMIUM PRODUCT", "EXCEPTIONAL QUALITY" 등)
+        ❌ placeholder 이미지 URL 사용 (placehold, example.com 등)
+        ❌ 상품 정보와 관련없는 다른 제품 정보 추가
+        ❌ 템플릿에 있던 다른 브랜드명이나 제품명 유지
         
+        ### **반드시 해야할 작업**
+        ✅ 모든 제목을 실제 상품명으로 교체
+        ✅ 모든 설명을 실제 상품 정보로 교체  
+        ✅ 모든 이미지를 제공된 허용 URL로 교체
+        ✅ 상품의 실제 특징과 장점으로 내용 교체
+
         {image_info}
         """
 
         human_prompt_template = """
-        **전반적인 스타일 컨셉을 따르세요:**
+        **스타일 컨셉 (디자인만 참고):**
         {style_concept}
         **---**
-        **기본 템플릿과 들어가야 할 내용:**
+        **기본 템플릿 (구조와 스타일만 참고, 텍스트는 교체):**
         {template_info}
         **---**
-        **실제 상품 정보:** {product_info}
+        **실제 상품 정보 (이것으로 모든 텍스트 교체):** 
+        {product_info}
         
-        위 상품 정보를 사용하여 템플릿의 내용을 교체하고, 제공된 이미지 URL들을 활용하여 완성된 HTML을 생성하세요.
+        📋 **작업 지시:**
+        1. 위 템플릿의 HTML 구조와 CSS 스타일은 그대로 유지
+        2. 템플릿의 모든 텍스트를 실제 상품 정보로 완전히 교체
+        3. 상품명, 설명, 특징 모두 실제 상품 정보에서 추출하여 사용
+        4. 제공된 허용 이미지 URL들을 모든 img 태그에 적용
+        5. 템플릿 예시 텍스트는 한 글자도 남기지 말고 모두 교체
+        
+        완성된 HTML 코드만 출력하세요.
         """
         
         prompt = ChatPromptTemplate.from_messages([
