@@ -252,7 +252,8 @@ def generate_structured_content(product_info: str, reference_templates: List[Dic
 def generate_template_based_html(
     product_info: str,
     product_image_url: str,
-    reference_templates: List[Dict[str, Any]]
+    reference_templates: List[Dict[str, Any]],
+    additional_image_urls: List[str] = None
 ) -> str:
     """
     ChromaDB 추천 템플릿을 기반으로 직접 HTML 생성 (최우선 모드)
@@ -270,23 +271,34 @@ def generate_template_based_html(
         template_examples += f"디자인 컨셉: {template.get('concept_style', '')}\n"
         template_examples += f"HTML 구조:\n{template.get('template_html', '')}\n\n"
     
+    # 추가 이미지 URL들 포매팅
+    image_urls_str = ""
+    if additional_image_urls:
+        image_urls_str = "\n추가 이미지 URLs:\n" + "\n".join([f"- {url}" for url in additional_image_urls])
+    
     system_prompt = f"""
     당신은 HTML 템플릿을 참고하여 새로운 상품의 상세페이지 HTML을 생성하는 전문가입니다.
     
     🎯 **핵심 지시사항**:
-    1. 아래 제공된 템플릿의 디자인 패턴, 구조, 스타일을 최대한 따라해주세요
-    2. 색상, 폰트, 레이아웃, HTML 클래스명 등을 유사하게 적용하세요
-    3. 새로운 상품 정보에 맞게 내용만 변경하고, 구조는 템플릿과 유사하게 유지하세요
-    4. 완전한 HTML 페이지를 생성해주세요 (여러 섹션으로 구성)
+    1. 템플릿의 디자인 스타일과 레이아웃 구조는 유지하되, 텍스트 내용은 완전히 새로운 상품 정보로 교체하세요
+    2. 템플릿에 있는 상품명, 설명, 특징 등을 그대로 복사하지 말고 제공된 상품 정보를 기반으로 작성하세요
+    3. 색상 스킴, 폰트 스타일, 여백, 그리드 구조 등 디자인 요소만 참고하세요
+    4. 이미지는 반드시 제공된 이미지 URL들을 사용하세요 (placeholder 이미지 사용 금지)
+    5. 여러 이미지가 제공된 경우 갤러리나 다양한 섹션에 배치하세요
+    
+    ⚠️ **주의사항**:
+    - 템플릿의 텍스트를 그대로 사용하지 마세요
+    - "PREMIUM PRODUCT", "EXCEPTIONAL QUALITY" 등 템플릿의 제목을 복사하지 마세요
+    - 제공된 상품 정보에서 실제 상품명과 특징을 추출하여 사용하세요
     
     {template_examples}
     
-    위 템플릿들의 스타일과 구조를 참고하여 새로운 상품의 HTML을 생성해주세요.
+    위 템플릿들의 **디자인 스타일**만 참고하여 새로운 상품의 HTML을 생성해주세요.
     """
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
-        ("human", f"상품 정보: {product_info}\n이미지 URL: {product_image_url}\n\n위 상품 정보를 바탕으로 참고 템플릿과 유사한 구조의 완전한 HTML 상세페이지를 생성해주세요.")
+        ("human", f"상품 정보: {product_info}\n메인 이미지 URL: {product_image_url}{image_urls_str}\n\n위 상품 정보와 이미지들을 사용하여 참고 템플릿의 스타일을 따르는 HTML 상세페이지를 생성해주세요. 템플릿의 텍스트는 사용하지 말고 상품 정보를 기반으로 새로 작성하세요.")
     ])
     
     chain = prompt | llm | StrOutputParser()
@@ -350,7 +362,8 @@ def build_html_from_content(content: ProductContent) -> str:
 def generate_hybrid_html(
     product_info: str,
     product_image_url: str,
-    reference_templates: List[Dict[str, Any]] = None
+    reference_templates: List[Dict[str, Any]] = None,
+    additional_image_urls: List[str] = None
 ) -> List[str]:
     """
     하이브리드 방식으로 안정적인 HTML을 생성합니다.
@@ -358,6 +371,8 @@ def generate_hybrid_html(
     Args:
         product_info: 상품 정보
         product_image_url: 상품 이미지 URL
+        reference_templates: 참조 템플릿들
+        additional_image_urls: 추가 이미지 URL들 (AI 생성 이미지)
         
     Returns:
         생성된 HTML (전체 페이지)
@@ -376,14 +391,31 @@ def generate_hybrid_html(
         # 템플릿이 있으면 템플릿 기반 직접 HTML 생성, 없으면 기존 방식
         if reference_templates and len(reference_templates) > 0:
             print(f"📚 {len(reference_templates)}개의 참조 템플릿을 사용하여 HTML 생성")
-            # 1. 템플릿 기반 직접 HTML 생성 (최우선)
-            html = generate_template_based_html(product_info, product_image_url, reference_templates)
+            # 1. 템플릿 기반 직접 HTML 생성 (최우선) - 추가 이미지 전달
+            html = generate_template_based_html(
+                product_info, 
+                product_image_url, 
+                reference_templates,
+                additional_image_urls=additional_image_urls
+            )
         else:
             print("⚠️ 참조 템플릿이 없음, 기본 구조화 방식으로 HTML 생성")
             # 2. 기존 방식: 구조화된 콘텐츠 생성 후 템플릿 적용
             # reference_templates를 None으로 전달하여 안전하게 처리
             content = generate_structured_content(product_info, None)
             html = build_html_from_content(content)
+            
+            # 추가 이미지가 있으면 HTML에 삽입
+            if additional_image_urls:
+                image_gallery = f"""
+                <div style="margin-top: 40px;">
+                    <h3 style="margin-bottom: 20px;">상품 이미지</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                """
+                for img_url in additional_image_urls:
+                    image_gallery += f'<img src="{img_url}" style="width: 100%; border-radius: 8px;" />'
+                image_gallery += "</div></div>"
+                html = html.replace("</body>", f"{image_gallery}</body>")
         
         # 3. 섹션별로 분리하여 반환 (기존 API와 호환)
         sections = html.split('<div class="product-section')

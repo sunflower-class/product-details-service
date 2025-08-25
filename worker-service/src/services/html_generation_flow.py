@@ -96,31 +96,56 @@ class HtmlGenerationFlow:
                 
                 print(f"✅ ProductDetails 생성 완료 - ID: {product_details_id}")
             
-            # 3. 원본 이미지 저장 (ORIGINAL)
-            print("2️⃣ 원본 이미지 저장 중...")
-            original_image_data = await self._store_original_image(
-                product_details_id, product_image_url, user_id, product_id
-            )
+            # 3. 원본 이미지 처리 (URL이 있을 때만)
+            original_image_data = None
+            if product_image_url and product_image_url.strip() and product_image_url != "https://placehold.co/400x300/png?text=Product+Image":
+                print("2️⃣ 원본 이미지 저장 중...")
+                original_image_data = await self._store_original_image(
+                    product_details_id, product_image_url, user_id, product_id
+                )
+                if original_image_data:
+                    print("✅ 원본 이미지 저장 완료")
+                else:
+                    print("⚠️ 원본 이미지 저장 실패, AI 생성으로 대체")
+            else:
+                print("📌 원본 이미지 URL 없음, AI 생성만 사용")
             
+            # 4. AI 이미지 생성 (원본 이미지가 없으면 1개 더 생성)
+            print("4️⃣ AI 이미지 생성 중...")
+            
+            # 원본 이미지가 없으면 이미지를 1개 더 생성
             if not original_image_data:
-                raise Exception("원본 이미지 저장 실패")
+                # 원본이 없으면 기존 max_images + 1개 생성
+                original_max = self.max_images
+                self.max_images = min(original_max + 1, 3)  # 최대 3개까지
+                print(f"🎨 원본 이미지 없음, AI 이미지 {self.max_images}개 생성 예정")
             
-            # 4. 추가 이미지 생성 (GENERATED)
-            print("4️⃣ 추가 이미지 생성 중...")
             generated_images = await self._generate_additional_images(
                 product_details_id, product_data, user_id, product_id,
                 features=features, target_customer=target_customer, tone=tone
             )
             
-            # 원본 이미지가 있으면 계속 진행 (추가 이미지 실패는 허용)
+            # max_images 원래대로 복원
             if not original_image_data:
-                raise Exception("원본 이미지 저장 실패")
-            elif not generated_images:
-                print("⚠️ 추가 이미지 생성 실패, 원본 이미지만 사용")
+                self.max_images = original_max
             
-            # 5. 모든 이미지 수집
-            all_images = [original_image_data] + generated_images
-            image_urls = [img['url'] for img in all_images if img and img.get('url')]
+            # 5. 모든 이미지 수집 (S3 URL 우선 사용)
+            all_images = []
+            if original_image_data:
+                all_images.append(original_image_data)
+            all_images.extend(generated_images)
+            
+            # S3 URL이 있으면 우선 사용, 없으면 temp_url 사용
+            image_urls = []
+            for img in all_images:
+                if img:
+                    # S3 URL이 있으면 우선 사용
+                    if img.get('s3_url'):
+                        image_urls.append(img['s3_url'])
+                        print(f"📸 S3 URL 사용: {img['s3_url'][:50]}...")
+                    elif img.get('url'):
+                        image_urls.append(img['url'])
+                        print(f"📸 임시 URL 사용: {img['url'][:50]}...")
             
             print(f"📸 사용할 이미지 {len(image_urls)}개 준비 완료")
             
@@ -447,6 +472,7 @@ class HtmlGenerationFlow:
             if template_recommender.health_check():
                 # 고급 방식: 상품 분석 → 블록별 콘셉트 → ChromaDB 매칭 → 구조 보존 생성 (최우선)
                 print("🎯 고급 HTML 생성 모드 사용")
+                # TODO: generate_advanced_html도 추가 이미지 지원 필요
                 html_list = generate_advanced_html(enhanced_product_data, primary_image)
                 
                 # 고급 방식 실패 시 기존 방식으로 폴백
@@ -455,28 +481,29 @@ class HtmlGenerationFlow:
                     html_list = generate_hybrid_html(
                         enhanced_product_data, 
                         primary_image, 
-                        reference_templates=reference_templates
+                        reference_templates=reference_templates,
+                        additional_image_urls=image_urls[1:] if len(image_urls) > 1 else None
                     )
                 else:
                     print(f"✅ 고급 방식으로 {len(html_list)}개 블록 생성 완료")
+                    # 고급 방식에서도 추가 이미지 갤러리 추가
+                    if len(image_urls) > 1:
+                        additional_images_html = self._create_image_gallery_html(image_urls[1:])
+                        html_list.append(additional_images_html)
             else:
                 print("⚠️ ChromaDB 연결 불가, 기존 방식 사용")
-                # 기존 방식: 하이브리드 HTML 생성 (보강된 데이터 + 참고 템플릿 사용)
+                # 기존 방식: 하이브리드 HTML 생성 (보강된 데이터 + 참고 템플릿 + 추가 이미지 사용)
                 html_list = generate_hybrid_html(
                     enhanced_product_data, 
                     primary_image, 
-                    reference_templates=reference_templates
+                    reference_templates=reference_templates,
+                    additional_image_urls=image_urls[1:] if len(image_urls) > 1 else None
                 )
             
             # 특징 하이라이트 HTML 추가
             if features:
                 features_html = self._create_features_html(features, tone)
                 html_list.append(features_html)
-            
-            # 추가 이미지들을 HTML에 삽입
-            if len(image_urls) > 1:
-                additional_images_html = self._create_image_gallery_html(image_urls[1:])
-                html_list.append(additional_images_html)
             
             return html_list
             
