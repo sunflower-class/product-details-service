@@ -125,39 +125,80 @@ async def stream_notifications(
         
         pubsub = None
         try:
-            # Redis pub/sub 구독 시작
-            pubsub = await redis_store.subscribe_user_notifications(user_id)
+            # Redis pub/sub 구독 시작 (재시도 로직 추가)
+            retry_count = 0
+            max_retries = 3
+            pubsub = None
+            
+            while retry_count < max_retries and not pubsub:
+                pubsub = await redis_store.subscribe_user_notifications(user_id)
+                if not pubsub:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        print(f"🔄 Redis 구독 재시도 중... ({retry_count}/{max_retries})")
+                        await asyncio.sleep(min(2 ** retry_count, 10))  # 지수 백오프 (최대 10초)
+            
             if not pubsub:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'Redis 연결 실패'})}\n\n"
+                yield "retry: 5000\n\n"  # 5초 후 재연결
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Redis 연결 실패 - 재연결을 시도해주세요', 'reconnect': True})}\n\n"
                 return
+            
+            # SSE 재연결 간격 설정 (3초)
+            yield "retry: 3000\n\n"
             
             # 연결 확인 메시지
             yield f"data: {json.dumps({'type': 'connected', 'user_id': user_id, 'timestamp': time.time()})}\n\n"
             
-            # 30초마다 keepalive 전송
+            # 15초마다 keepalive 전송 (더 자주)
             last_keepalive = time.time()
+            error_count = 0
+            max_errors = 3  # 연속 에러 허용 횟수
             
             while True:
                 try:
-                    # Redis에서 메시지 확인 (non-blocking)
-                    message = await asyncio.wait_for(pubsub.get_message(), timeout=2.0)
+                    # Redis에서 메시지 확인 (더 긴 타임아웃)
+                    message = await asyncio.wait_for(pubsub.get_message(), timeout=5.0)
                     
                     if message and message['type'] == 'message':
                         # 실시간 알림 데이터 전송
                         notification_data = json.loads(message['data'])
                         yield f"data: {json.dumps({'type': 'notification', 'data': notification_data})}\n\n"
+                        error_count = 0  # 성공 시 에러 카운트 리셋
                     
                 except asyncio.TimeoutError:
-                    # 타임아웃 시 keepalive 체크
+                    # 타임아웃 시 keepalive 체크 (더 자주)
                     current_time = time.time()
-                    if current_time - last_keepalive > 30:
+                    if current_time - last_keepalive > 15:  # 15초마다
                         yield f"data: {json.dumps({'type': 'keepalive', 'timestamp': current_time})}\n\n"
                         last_keepalive = current_time
                         
                 except Exception as e:
-                    print(f"❌ Redis 메시지 처리 오류: {e}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-                    break
+                    error_count += 1
+                    print(f"❌ Redis 메시지 처리 오류 ({error_count}/{max_errors}): {e}")
+                    
+                    # Redis 연결 에러인 경우 즉시 재구독 시도
+                    if "connection" in str(e).lower() or "timeout" in str(e).lower():
+                        print("🔄 Redis 연결 문제 감지, 재구독 시도...")
+                        try:
+                            if pubsub:
+                                await pubsub.unsubscribe()
+                                await pubsub.close()
+                            pubsub = await redis_store.subscribe_user_notifications(user_id)
+                            if pubsub:
+                                print("✅ Redis 재구독 성공")
+                                error_count = 0  # 재구독 성공 시 에러 카운트 리셋
+                                continue
+                        except Exception as reconnect_error:
+                            print(f"❌ Redis 재구독 실패: {reconnect_error}")
+                    
+                    # 에러가 연속으로 발생하면 연결 종료
+                    if error_count >= max_errors:
+                        yield "retry: 3000\n\n"
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Redis 연결 불안정으로 재연결이 필요합니다', 'reconnect': True})}\n\n"
+                        break
+                    
+                    # 일시적 에러는 지수 백오프로 대기 후 재시도
+                    await asyncio.sleep(min(2 ** error_count, 10))
                 
         except Exception as e:
             print(f"❌ SSE 스트림 오류: {e}")
@@ -182,6 +223,8 @@ async def stream_notifications(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Nginx 버퍼링 비활성화
+            "X-SSE-Retry": "3000",      # 재연결 시 3초 대기 (프론트엔드 참조용)
         }
     )
 
