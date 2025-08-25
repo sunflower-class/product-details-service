@@ -472,8 +472,12 @@ class HtmlGenerationFlow:
             if template_recommender.health_check():
                 # 고급 방식: 상품 분석 → 블록별 콘셉트 → ChromaDB 매칭 → 구조 보존 생성 (최우선)
                 print("🎯 고급 HTML 생성 모드 사용")
-                # TODO: generate_advanced_html도 추가 이미지 지원 필요
-                html_list = generate_advanced_html(enhanced_product_data, primary_image)
+                # 고급 방식에 추가 이미지 URL들 전달
+                html_list = generate_advanced_html(
+                    enhanced_product_data, 
+                    primary_image,
+                    additional_image_urls=image_urls[1:] if len(image_urls) > 1 else None
+                )
                 
                 # 고급 방식 실패 시 기존 방식으로 폴백
                 if not html_list:
@@ -486,10 +490,6 @@ class HtmlGenerationFlow:
                     )
                 else:
                     print(f"✅ 고급 방식으로 {len(html_list)}개 블록 생성 완료")
-                    # 고급 방식에서도 추가 이미지 갤러리 추가
-                    if len(image_urls) > 1:
-                        additional_images_html = self._create_image_gallery_html(image_urls[1:])
-                        html_list.append(additional_images_html)
             else:
                 print("⚠️ ChromaDB 연결 불가, 기존 방식 사용")
                 # 기존 방식: 하이브리드 HTML 생성 (보강된 데이터 + 참고 템플릿 + 추가 이미지 사용)

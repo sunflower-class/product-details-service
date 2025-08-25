@@ -97,7 +97,11 @@ def generate_product_page_concept(product_info: str, product_image_url: str) -> 
 # 3. ChromaDB에서 콘셉트 매칭하여 HTML 템플릿 가져오기
 # -------------------------------------------------------------
 
-def get_concept_html_template(product_page: ProductPage) -> List[str]:
+def get_concept_html_template(
+    product_page: ProductPage, 
+    product_info: str, 
+    additional_image_urls: List[str] = None
+) -> List[str]:
     """블록별로 ChromaDB에서 최적의 템플릿을 찾아 HTML 생성"""
     style_concept = product_page.style_concept
     concept_blocks = product_page.concept_blocks
@@ -239,6 +243,26 @@ def create_html_block(block: Dict[str, Any], style: StyleConcept) -> Optional[st
         print(f"❌ HTML 블록 생성 중 오류: {e}")
         return None
 
+def _create_image_gallery_html(image_urls: List[str]) -> str:
+    """추가 이미지들로 갤러리 HTML 생성 (고급 방식용)"""
+    
+    gallery_items = []
+    for url in image_urls:
+        gallery_items.append(f'''
+            <div style="flex: 1; margin: 10px; max-width: 300px;">
+                <img src="{url}" alt="Product Image" style="width: 100%; height: 250px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" />
+            </div>
+        ''')
+    
+    return f'''
+    <div style="margin: 40px 0; padding: 30px 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+        <h3 style="text-align: center; margin-bottom: 25px; color: #333; font-size: 24px; font-weight: bold;">상품 이미지 갤러리</h3>
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; max-width: 1000px; margin: 0 auto;">
+            {"".join(gallery_items)}
+        </div>
+    </div>
+    '''
+
 def markdown_to_html(markdown_text: str) -> str:
     """마크다운 형식의 코드 블럭에서 순수한 HTML 코드만 추출"""
     clean_text = markdown_text.strip()
@@ -258,10 +282,16 @@ def markdown_to_html(markdown_text: str) -> str:
 
 def generate_advanced_html(
     product_info: str,
-    product_image_url: str
+    product_image_url: str,
+    additional_image_urls: List[str] = None
 ) -> List[str]:
     """
     고급 HTML 생성: 상품 분석 → 블록별 콘셉트 → ChromaDB 매칭 → 구조 보존 생성
+    
+    Args:
+        product_info: 상품 정보
+        product_image_url: 메인 이미지 URL
+        additional_image_urls: 추가 이미지 URL들 (AI 생성 이미지)
     """
     print("🚀 고급 HTML 생성 시작...")
     
@@ -272,9 +302,13 @@ def generate_advanced_html(
         
         # 2단계: 블록별로 ChromaDB에서 템플릿을 찾아 HTML 생성
         print("2️⃣ 블록별 템플릿 매칭 및 HTML 생성 중...")
-        html_results = get_concept_html_template(page_layout)
+        html_results = get_concept_html_template(page_layout, product_info, additional_image_urls)
         
-        # 3단계: 이미지 URL 처리는 기존 플로우에서 담당
+        # 3단계: 추가 이미지가 있으면 갤러리 HTML 추가
+        if additional_image_urls and len(additional_image_urls) > 0:
+            print(f"3️⃣ 추가 이미지 {len(additional_image_urls)}개로 갤러리 생성 중...")
+            image_gallery_html = _create_image_gallery_html(additional_image_urls)
+            html_results.append(image_gallery_html)
         
         print(f"✅ 고급 HTML 생성 완료: {len(html_results)}개 블록")
         return html_results
