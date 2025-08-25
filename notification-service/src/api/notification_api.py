@@ -5,7 +5,6 @@ import asyncio
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 import json
 import time
 
@@ -18,14 +17,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS 설정 (프론트엔드 연동용)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 실제 배포시에는 특정 도메인으로 제한
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # SSE 연결 관리 (사용자별)
 active_connections: Dict[str, List] = {}
@@ -191,8 +182,6 @@ async def stream_notifications(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
         }
     )
 
