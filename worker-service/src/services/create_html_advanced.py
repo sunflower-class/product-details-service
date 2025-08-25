@@ -137,12 +137,12 @@ def get_concept_html_template(
             }
             
             # HTML 블록 생성
-            html_block = create_html_block(block_data, style_concept)
+            html_block = create_html_block(block_data, style_concept, product_info, additional_image_urls)
             if html_block:
                 html_results.append(html_block)
                 print(f"✅ 블록 {idx+1} 생성 완료")
             else:
-                print(f"❌ 블록 {idx+1} 검증 실패")
+                print(f"❌ 블록 {idx+1} 생성 실패")
                 
         except Exception as e:
             print(f"❌ 블록 {idx+1} 생성 중 오류: {e}")
@@ -154,61 +154,157 @@ def get_concept_html_template(
 # 4. 템플릿 구조 보존하며 HTML 블록 생성 (기존 방식)
 # -------------------------------------------------------------
 
-class ProductCheck(BaseModel):
-    """HTML 코드가 현재 상품 설명과 관련 있는지 확인"""
-    check: bool = Field(description="HTML 코드와 현재 상품 설명과 관련있는지 bool 값으로 리턴")
-    reason: str = Field(description="검열 결과를 상세히 작성")
-
-def check_html(block_content: str, html: str) -> bool:
-    """생성된 HTML이 블록 내용과 일치하는지 검증"""
+def validate_and_fix_html(
+    block_content: str, 
+    html: str, 
+    product_info: str,
+    additional_image_urls: List[str] = None
+) -> str:
+    """HTML을 검증하고, 문제가 있으면 수정된 HTML을 반환"""
     try:
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, api_key=OPENAI_API_KEY)
-        structured_llm = llm.with_structured_output(ProductCheck)
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, api_key=OPENAI_API_KEY)
         
-        system_prompt = """
-        당신은 HTML 코드 검열관입니다. 주어진 HTML 코드와 블록에 대한 정보가 일치하는지 확인하는 것이 임무입니다.
+        # 허용된 이미지 URL들만 필터링 (S3 URL 우선)
+        valid_image_urls = []
+        if additional_image_urls:
+            for url in additional_image_urls:
+                # S3 URL, 또는 특정 도메인만 허용
+                if any(domain in url for domain in ['.s3.', 'amazonaws.com', 'blob.core.windows.net']):
+                    valid_image_urls.append(url)
+                elif url.startswith('https://') and not any(blocked in url for blocked in ['placehold', 'placeholder', 'example.com']):
+                    valid_image_urls.append(url)
         
-        ### **핵심 검열 가이드**
-        1. **블록 정보 초과:** 블록에 없는 정보가 HTML 코드에 포함되어 있으면 안됩니다.
-        2. **블록 정보 불일치:** 블록에 있는 정보와 HTML 코드에 포함된 정보가 불일치하면 안됩니다.
-        3. **블록 정보 부족:** 블록에 있는 정보가 HTML 코드에 대부분 포함되어 있어야 합니다.
-
-        위 가이드라인에 따라 검열을 통과하면 True, 실패하면 False를 리턴하고 이유를 제시하세요.
+        # 이미지 URL 정보 포함
+        image_info = ""
+        if valid_image_urls:
+            image_info = f"\n\n**허용된 이미지 URL들 (반드시 이것만 사용)**:\n" + "\n".join([f"- {url}" for url in valid_image_urls])
+        
+        system_prompt = f"""
+        당신은 HTML 검증 및 수정 전문가입니다. 생성된 HTML을 검증하고 필요시 수정하는 것이 임무입니다.
+        
+        ### **검증 및 수정 가이드**
+        1. **관련없는 정보 제거**: 상품 정보와 관련없는 내용은 완전히 제거하세요
+        2. **누락된 정보 추가**: 블록 내용에 있지만 HTML에 누락된 중요 정보를 추가하세요
+        3. **이미지 URL 엄격 검증**: 오직 제공된 허용 이미지 URL들만 사용하세요
+        4. **구조 유지**: 원본 HTML의 스타일과 구조는 최대한 보존하세요
+        5. **완성된 HTML만 반환**: 설명이나 주석 없이 완성된 HTML 코드만 출력하세요
+        
+        ### **이미지 URL 규칙 (매우 중요)**
+        - 반드시 제공된 허용된 이미지 URL들만 사용하세요
+        - placehold, placeholder, example.com 등의 더미 URL은 절대 사용 금지
+        - 템플릿에 있는 예시 이미지 URL은 허용된 실제 URL로 교체
+        - img 태그의 src 속성에는 오직 허용된 URL만 사용
+        
+        ### **기타 주의사항**
+        - 템플릿 예시 텍스트("PREMIUM PRODUCT", "EXCEPTIONAL QUALITY" 등)는 실제 상품 정보로 교체
+        - 관련없는 다른 상품 정보는 절대 포함하지 않기
+        
+        {image_info}
         """
-
-        human_prompt = "HTML 코드: {html_info}, 블록 정보: {block_info}"
+        
+        human_prompt = f"""
+        **원본 HTML**: {html}
+        
+        **블록 정보**: {block_content}
+        
+        **실제 상품 정보**: {product_info}
+        
+        위 HTML을 검증하고, 상품 정보와 맞지 않는 내용은 제거하고, 누락된 내용은 추가하여 수정된 HTML을 반환하세요.
+        """
+        
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", human_prompt)
         ])
-
-        chain = prompt | structured_llm
-        result = chain.invoke({"html_info": html, "block_info": block_content})
-        print(f"📋 블록 검증: {result.check} - {result.reason}")
-        return result.check
+        
+        chain = prompt | llm | StrOutputParser()
+        corrected_html = chain.invoke({})
+        
+        # 마크다운 코드 블록 제거
+        corrected_html = markdown_to_html(corrected_html)
+        
+        # 추가 검증: HTML에서 잘못된 이미지 URL 제거
+        corrected_html = _validate_image_urls_in_html(corrected_html, valid_image_urls)
+        
+        print(f"✅ HTML 검증 및 수정 완료")
+        return corrected_html
         
     except Exception as e:
-        print(f"❌ HTML 검증 중 오류: {e}")
-        return True  # 검증 실패 시 통과로 처리
+        print(f"❌ HTML 검증/수정 중 오류: {e}")
+        return html  # 오류 시 원본 반환
 
-def create_html_block(block: Dict[str, Any], style: StyleConcept) -> Optional[str]:
+def _validate_image_urls_in_html(html: str, valid_image_urls: List[str]) -> str:
+    """HTML에서 잘못된 이미지 URL을 찾아서 올바른 URL로 교체하거나 제거"""
+    try:
+        import re
+        
+        if not valid_image_urls:
+            return html
+        
+        # img 태그의 src 속성 찾기
+        img_pattern = r'<img[^>]*src=["\']([^"\']*)["\'][^>]*>'
+        
+        def replace_image_src(match):
+            full_tag = match.group(0)
+            src_url = match.group(1)
+            
+            # 허용된 URL인지 확인
+            if src_url in valid_image_urls:
+                return full_tag  # 그대로 유지
+            
+            # 잘못된 URL인 경우
+            if any(blocked in src_url.lower() for blocked in ['placehold', 'placeholder', 'example.com', '[', ']']):
+                # 첫 번째 유효한 이미지로 교체
+                if valid_image_urls:
+                    new_src = valid_image_urls[0]
+                    new_tag = full_tag.replace(src_url, new_src)
+                    print(f"🔄 이미지 URL 교체: {src_url[:50]}... → {new_src[:50]}...")
+                    return new_tag
+                else:
+                    print(f"⚠️ 잘못된 이미지 태그 제거: {src_url[:50]}...")
+                    return ""  # 태그 자체를 제거
+            
+            return full_tag  # 다른 경우는 그대로 유지
+        
+        # 모든 img 태그 처리
+        corrected_html = re.sub(img_pattern, replace_image_src, html, flags=re.IGNORECASE)
+        
+        return corrected_html
+        
+    except Exception as e:
+        print(f"❌ 이미지 URL 검증 중 오류: {e}")
+        return html
+
+def create_html_block(
+    block: Dict[str, Any], 
+    style: StyleConcept, 
+    product_info: str, 
+    additional_image_urls: List[str] = None
+) -> Optional[str]:
     """템플릿을 사용하여 구조를 보존하면서 새로운 HTML 블록 생성"""
     try:
         enhancer_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3, api_key=OPENAI_API_KEY)
 
-        system_prompt = """
+        # 추가 이미지 URL 정보 포함
+        image_info = ""
+        if additional_image_urls:
+            image_info = f"\n\n**사용 가능한 이미지 URL들**:\n" + "\n".join([f"- {url}" for url in additional_image_urls])
+
+        system_prompt = f"""
         당신은 숙련된 HTML 템플릿 편집 전문가입니다. 주어진 HTML 템플릿의 **기존 구조와 레이아웃 스타일은 절대 변경하지 않으면서**, 새로 제공되는 데이터에 맞게 **문구, 이미지 프롬프트, 색상, 테마**와 같은 지정된 요소만을 정밀하게 수정하여 최종 HTML 코드를 생성하는 것입니다.
 
         ### **핵심 가이드 원칙**
         1. **구조 보존의 원칙:** 원본 템플릿의 HTML 태그 구조, CSS 클래스 및 ID, 레이아웃을 정의하는 핵심 스타일을 **절대 변경하지 않습니다**.
-        2. **데이터 중심의 수정:** 주어진 데이터를 템플릿의 정확한 위치에 삽입하고 교체하는 것에 집중하세요.
-        3. **목록의 아이템 추가:** 템플릿의 리스트 형태의 목록에 들어가야 할 아이템의 갯수를 변경할 수 있습니다.
+        2. **데이터 중심의 수정:** 주어진 상품 정보에 맞게 텍스트를 교체하고, 제공된 실제 이미지 URL을 사용하세요.
+        3. **템플릿 텍스트 교체:** "PREMIUM PRODUCT", "EXCEPTIONAL QUALITY" 등의 템플릿 예시는 실제 상품 정보로 교체하세요.
+        4. **이미지 URL 적용:** 제공된 실제 이미지 URL들을 img 태그에 사용하세요.
 
         ### **주의사항**
         * 최종 결과물은 완성된 **HTML 코드**만 출력하세요.
-        * 요청되지 않은 HTML 구조 변경이나 창의적인 스타일 추가는 **절대 금지**입니다.
-        * 기존 템플릿을 그대로 사용하지 말고 반드시 **주어진 상품 정보에 맞게 수정**하세요.
-        * 이미지 URL은 실제 이미지 URL로 교체하세요.
+        * 템플릿의 구조와 스타일은 유지하되, 내용은 실제 상품 정보로 교체하세요.
+        * placeholder나 예시 이미지 URL은 사용하지 마세요.
+        
+        {image_info}
         """
 
         human_prompt_template = """
@@ -217,6 +313,10 @@ def create_html_block(block: Dict[str, Any], style: StyleConcept) -> Optional[st
         **---**
         **기본 템플릿과 들어가야 할 내용:**
         {template_info}
+        **---**
+        **실제 상품 정보:** {product_info}
+        
+        위 상품 정보를 사용하여 템플릿의 내용을 교체하고, 제공된 이미지 URL들을 활용하여 완성된 HTML을 생성하세요.
         """
         
         prompt = ChatPromptTemplate.from_messages([
@@ -229,15 +329,21 @@ def create_html_block(block: Dict[str, Any], style: StyleConcept) -> Optional[st
         html = chain.invoke({
             "style_concept": style.model_dump_json(indent=2),
             "template_info": block,
+            "product_info": product_info
         })
 
         # 마크다운 코드 블록 제거
         html = markdown_to_html(html)
         
-        # HTML 검증
-        check = check_html(block_content=block["content"], html=html)
+        # HTML 검증 및 수정
+        corrected_html = validate_and_fix_html(
+            block_content=block["content"], 
+            html=html, 
+            product_info=product_info,
+            additional_image_urls=additional_image_urls
+        )
         
-        return html if check else None
+        return corrected_html
         
     except Exception as e:
         print(f"❌ HTML 블록 생성 중 오류: {e}")

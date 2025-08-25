@@ -271,10 +271,20 @@ def generate_template_based_html(
         template_examples += f"디자인 컨셉: {template.get('concept_style', '')}\n"
         template_examples += f"HTML 구조:\n{template.get('template_html', '')}\n\n"
     
-    # 추가 이미지 URL들 포매팅
-    image_urls_str = ""
+    # 허용된 이미지 URL들만 필터링 (S3 URL 우선)
+    valid_image_urls = []
     if additional_image_urls:
-        image_urls_str = "\n추가 이미지 URLs:\n" + "\n".join([f"- {url}" for url in additional_image_urls])
+        for url in additional_image_urls:
+            # S3 URL, 또는 특정 도메인만 허용
+            if any(domain in url for domain in ['.s3.', 'amazonaws.com', 'blob.core.windows.net']):
+                valid_image_urls.append(url)
+            elif url.startswith('https://') and not any(blocked in url for blocked in ['placehold', 'placeholder', 'example.com']):
+                valid_image_urls.append(url)
+    
+    # 허용된 이미지 URL들 포매팅
+    image_urls_str = ""
+    if valid_image_urls:
+        image_urls_str = "\n허용된 이미지 URLs (반드시 이것만 사용):\n" + "\n".join([f"- {url}" for url in valid_image_urls])
     
     system_prompt = f"""
     당신은 HTML 템플릿을 참고하여 새로운 상품의 상세페이지 HTML을 생성하는 전문가입니다.
@@ -283,7 +293,7 @@ def generate_template_based_html(
     1. 템플릿의 디자인 스타일과 레이아웃 구조는 유지하되, 텍스트 내용은 완전히 새로운 상품 정보로 교체하세요
     2. 템플릿에 있는 상품명, 설명, 특징 등을 그대로 복사하지 말고 제공된 상품 정보를 기반으로 작성하세요
     3. 색상 스킴, 폰트 스타일, 여백, 그리드 구조 등 디자인 요소만 참고하세요
-    4. 이미지는 반드시 제공된 이미지 URL들을 사용하세요 (placeholder 이미지 사용 금지)
+    4. 이미지는 오직 제공된 허용된 이미지 URL들만 사용하세요 (placehold, placeholder 등 더미 URL 절대 금지)
     5. 여러 이미지가 제공된 경우 갤러리나 다양한 섹션에 배치하세요
     
     ⚠️ **주의사항**:
