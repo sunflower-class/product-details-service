@@ -3,6 +3,7 @@
 S3 업로드와 데이터베이스 저장을 담당
 """
 import os
+import time
 import hashlib
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
@@ -105,22 +106,64 @@ class ImageManager:
             
             print(f"✅ 이미지 생성 성공: {temp_url}")
             
-            # 4. 데이터베이스에 저장
+            # 4. 데이터베이스에 저장 (재시도 로직 포함)
             with simple_db.get_session() as db:
-                image_record = ProductImage(
-                    product_details_id=product_details_id,
-                    product_id=product_id,
-                    user_id=user_id,
-                    original_prompt=prompt,
-                    translated_prompt=translated_prompt,
-                    temp_url=temp_url,
-                    image_source='GENERATED',
-                    image_type=image_type,
-                    is_uploaded_to_s3=False
-                )
+                # product_details_id 존재 확인 및 재시도
+                max_retries = 3
+                retry_delay = 1  # 1초
                 
-                db.add(image_record)
-                db.flush()  # ID 생성을 위해
+                for attempt in range(max_retries):
+                    try:
+                        # product_details 존재 확인
+                        existing_details = db.query(ProductDetails).filter(
+                            ProductDetails.id == product_details_id
+                        ).first()
+                        
+                        if existing_details:
+                            # 존재하면 이미지 레코드 생성
+                            image_record = ProductImage(
+                                product_details_id=product_details_id,
+                                product_id=product_id,
+                                user_id=user_id,
+                                original_prompt=prompt,
+                                translated_prompt=translated_prompt,
+                                temp_url=temp_url,
+                                image_source='GENERATED',
+                                image_type=image_type,
+                                is_uploaded_to_s3=False
+                            )
+                            
+                            db.add(image_record)
+                            db.flush()  # ID 생성을 위해
+                            break  # 성공하면 루프 종료
+                            
+                        else:
+                            print(f"⏳ ProductDetails ID {product_details_id} 찾을 수 없음. 재시도 {attempt + 1}/{max_retries}")
+                            if attempt < max_retries - 1:
+                                time.sleep(retry_delay)
+                                retry_delay *= 2  # 지수적 백오프
+                                continue
+                            else:
+                                # 최대 재시도 횟수 초과
+                                print(f"❌ ProductDetails ID {product_details_id} 최종 실패 - 레코드가 존재하지 않음")
+                                return {
+                                    'error': f'ProductDetails with ID {product_details_id} does not exist after {max_retries} attempts',
+                                    'prompt': prompt,
+                                    'image_type': image_type
+                                }
+                                
+                    except Exception as e:
+                        if "ForeignKeyViolation" in str(e) or "foreign key constraint" in str(e).lower():
+                            print(f"⏳ 외래 키 제약 조건 위반, 재시도 {attempt + 1}/{max_retries}: {e}")
+                            if attempt < max_retries - 1:
+                                db.rollback()  # 트랜잭션 롤백
+                                time.sleep(retry_delay)
+                                retry_delay *= 2  # 지수적 백오프
+                                continue
+                            else:
+                                raise  # 최대 재시도 후에도 실패하면 예외 발생
+                        else:
+                            raise  # 다른 종류의 예외는 즉시 발생
                 
                 image_id = image_record.id
                 

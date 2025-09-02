@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: html-generation-worker-pdb
+  namespace: sangsangplus-backend
+  labels:
+    app: html-generation-worker
+    service: worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: html-generation-worker

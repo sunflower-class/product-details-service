@@ -7,7 +7,7 @@ metadata:
     app: html-generation-worker
     service: worker
 spec:
-  replicas: 1  # Worker 인스턴스 수 (필요에 따라 조정)
+  replicas: 2  # HA 구성을 위한 최소 2개 인스턴스
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -19,11 +19,25 @@ spec:
         service: worker
       annotations:
         traffic.sidecar.istio.io/excludeOutboundIPRanges: "20.200.193.28/32"
-        traffic.sidecar.istio.io/excludeOutboundPorts: "443,5671,5672"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "443,5671,5672,6380"
     spec:
       # Worker 전용 노드 풀에 배포
       nodeSelector:
         agentpool: workers
+      
+      # Anti-affinity 설정 - 같은 노드에 배포되지 않도록
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - html-generation-worker
+              topologyKey: kubernetes.io/hostname
       
       containers:
       - name: worker
